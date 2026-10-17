@@ -21,10 +21,12 @@ type Props = {
 // visitor scrolls. Many systems report `prefers-reduced-motion` without the person knowing (Windows with animations
 // off, power saver, remote desktop), so that signal alone must not turn the main experience into still images.
 // People who do want less motion get a visible choice, remembered for the session (sessionStorage, not a cookie).
+// Data saver is different: it is an explicit request to spend less data, so those visitors start with the posters
+// (no video downloads) and can turn the flight on.
 const REDUCED = "(prefers-reduced-motion: reduce)";
 const CHOICE_KEY = "sw-motion";
 const CHOICE_EVENT = "sw-motion-change";
-type Choice = "still" | "ack" | null;
+type Choice = "still" | "animated" | "ack" | null;
 
 const subscribeReduced = (notify: () => void) => {
   const query = window.matchMedia(REDUCED);
@@ -33,6 +35,21 @@ const subscribeReduced = (notify: () => void) => {
 };
 const readReduced = () => window.matchMedia(REDUCED).matches;
 
+// Network Information API: Chromium browsers only; elsewhere it is simply absent and the flight loads as usual.
+type NetworkInfo = EventTarget & { saveData?: boolean; effectiveType?: string };
+const connection = () => (navigator as Navigator & { connection?: NetworkInfo }).connection;
+const subscribeLowData = (notify: () => void) => {
+  const c = connection();
+  c?.addEventListener("change", notify);
+  return () => c?.removeEventListener("change", notify);
+};
+const readLowData = () => {
+  const c = connection();
+  return Boolean(c?.saveData) || c?.effectiveType === "slow-2g" || c?.effectiveType === "2g";
+};
+
+const subscribeNever = () => () => {};
+
 const subscribeChoice = (notify: () => void) => {
   window.addEventListener(CHOICE_EVENT, notify);
   return () => window.removeEventListener(CHOICE_EVENT, notify);
@@ -40,7 +57,7 @@ const subscribeChoice = (notify: () => void) => {
 const readChoice = (): Choice => {
   try {
     const value = sessionStorage.getItem(CHOICE_KEY);
-    return value === "still" || value === "ack" ? value : null;
+    return value === "still" || value === "animated" || value === "ack" ? value : null;
   } catch {
     return null;
   }
@@ -62,14 +79,17 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
   const host = useRef<HTMLDivElement>(null);
   const reduced = useSyncExternalStore(subscribeReduced, readReduced, () => false);
   const choice = useSyncExternalStore(subscribeChoice, readChoice, () => null);
-  const stills = choice === "still";
+  const lowData = useSyncExternalStore(subscribeLowData, readLowData, () => false);
+  // False during server render and hydration, true once the real client values above are known. The engine
+  // waits for it, otherwise it would start downloading with the server defaults and then remount.
+  const ready = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const stills = choice === "still" || (lowData && choice !== "animated");
 
   // The engine builds its own DOM, so the config is the only thing React owns here.
   const config = useMemo(
     () => ({
       hint,
-      // 'full' ignores the system setting; 'auto' lets the engine honour it (stills only).
-      motion: stills ? "auto" : "full",
+      motion: stills ? "still" : "full",
       nav: false,
       atmosphere: false,
       diveScroll: 1.3,
@@ -102,13 +122,13 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
 
   useEffect(() => {
     const el = host.current;
-    if (!el) return;
+    if (!el || !ready) return;
     const world = mountScrollWorld(el, config);
     // The same copy is in the server rendered summary below, so assistive tech reads it once, in order.
     el.querySelector(".sw-copylayer")?.setAttribute("aria-hidden", "true");
     el.querySelectorAll<HTMLElement>(".sw-copylayer a").forEach((link) => (link.tabIndex = -1));
     return () => world?.destroy();
-  }, [config]);
+  }, [config, ready]);
 
   // Jump straight past the flight. Instant on purpose: a smooth scroll would scrub (and download) every clip.
   const skipFlight = () => {
@@ -118,8 +138,11 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
     target.focus({ preventScroll: true });
   };
 
-  // Only people whose system asks for less motion see the notice, and only until they answer it.
-  const showNotice = reduced && choice !== "ack";
+  // Notice states: showing posters (data saver, or chosen) offers the flight back; a reduced motion system
+  // with the flight running offers the posters until the visitor answers. Everyone else sees nothing.
+  const notice = stills
+    ? choice === "still" ? motion.noticeStill : motion.noticeLowData
+    : reduced && choice === null ? motion.noticeAnimated : null;
 
   return (
     <>
@@ -144,42 +167,42 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
 
       {/* Sibling of the host so CSS can hide it once the flight is over (`#vuelo.is-done ~ .sw-flight-ui`). */}
       <div className="sw-flight-ui pointer-events-none fixed inset-x-4 top-24 z-[350] flex flex-col items-end gap-2 sm:inset-x-auto sm:top-auto sm:right-4 sm:bottom-4 sm:w-[28rem]">
-        {showNotice ? (
+        {notice ? (
           <div
             role="region"
-            aria-label={stills ? motion.noticeStill : motion.noticeAnimated}
+            aria-label={notice}
             className="border-line bg-surface/90 pointer-events-auto flex w-full flex-col items-start gap-3 rounded-2xl border p-4 backdrop-blur-xl"
           >
-            <p className="text-muted text-sm">{stills ? motion.noticeStill : motion.noticeAnimated}</p>
-          <div className="flex flex-wrap gap-2">
-            {stills ? (
-              <button
-                type="button"
-                onClick={() => writeChoice(null)}
-                className={`${buttonClass} bg-violet hover:bg-violet-soft text-white`}
-              >
-                {motion.toAnimated}
-              </button>
-            ) : (
-              <>
+            <p className="text-muted text-sm">{notice}</p>
+            <div className="flex flex-wrap gap-2">
+              {stills ? (
                 <button
                   type="button"
-                  onClick={() => writeChoice("still")}
-                  className={`${buttonClass} border-line hover:bg-ink/10 border`}
-                >
-                  {motion.toStill}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => writeChoice("ack")}
+                  onClick={() => writeChoice("animated")}
                   className={`${buttonClass} bg-violet hover:bg-violet-soft text-white`}
                 >
-                  {motion.dismiss}
+                  {motion.toAnimated}
                 </button>
-              </>
-            )}
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => writeChoice("still")}
+                    className={`${buttonClass} border-line hover:bg-ink/10 border`}
+                  >
+                    {motion.toStill}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => writeChoice("ack")}
+                    className={`${buttonClass} bg-violet hover:bg-violet-soft text-white`}
+                  >
+                    {motion.dismiss}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        </div>
         ) : null}
 
         <button

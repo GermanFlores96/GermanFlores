@@ -34,14 +34,19 @@ export const scenes: {
   { id: "final", accent: "#9B87FF", scroll: 1.7, linger: 0.4 },
 ];
 
-// Desktop chain is 16:9 at 1080p; the phone chain is a native 9:16 render at 720 wide (`-m` files).
-// The engine picks the `-m` sources on phones and coarse pointers.
+// Media lives in versioned folders and is served with a one year immutable cache (next.config.ts).
+// Changing any clip or poster means a new folder (v2, v3...) and bumping this constant, never overwriting v1,
+// or returning visitors would keep the old file. globals.css also points at the first poster of this version.
+export const MEDIA = "v1";
+
+// Desktop chain is 16:9 at 720p (Flow renders 720p; its 1080p download is only an upscale);
+// the phone chain is a native 9:16 render at 720 wide (`-m` files). The engine picks `-m` on phones.
 export const sceneAssets = (id: SceneId) => ({
-  still: `/img/scenes/${id}.webp`,
-  clip: `/vid/${id}.mp4`,
-  stillMobile: `/img/scenes/${id}-m.webp`,
-  clipMobile: `/vid/${id}-m.mp4`,
+  still: `/img/${MEDIA}/scenes/${id}.webp`,
+  clip: `/vid/${MEDIA}/${id}.mp4`,
+  stillMobile: `/img/${MEDIA}/scenes/${id}-m.webp`,
+  clipMobile: `/vid/${MEDIA}/${id}-m.mp4`,
 });
 
-export const connectors = [1, 2, 3, 4, 5].map((i) => `/vid/conn${i}.mp4`);
-export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/conn${i}-m.mp4`);
+export const connectors = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}.mp4`);
+export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}-m.mp4`);

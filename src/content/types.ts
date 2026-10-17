@@ -40,6 +40,7 @@ export type Dictionary = {
     motion: {
       noticeAnimated: string;
       noticeStill: string;
+      noticeLowData: string;
       toStill: string;
       toAnimated: string;
       dismiss: string;

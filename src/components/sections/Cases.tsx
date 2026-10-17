@@ -1,12 +1,13 @@
 import Image from "next/image";
 import { DeviceMobile, Robot, ShieldCheck } from "@phosphor-icons/react/ssr";
 import { Reveal } from "@/components/ui/Reveal";
+import { sceneAssets } from "@/content/shared";
 import type { Dictionary } from "@/content/types";
 
 const posters = {
-  mony: { src: "/img/scenes/mony.webp", Icon: DeviceMobile },
-  security: { src: "/img/scenes/boveda.webp", Icon: ShieldCheck },
-  ai: { src: "/img/scenes/taller-ia.webp", Icon: Robot },
+  mony: { src: sceneAssets("mony").still, Icon: DeviceMobile },
+  security: { src: sceneAssets("boveda").still, Icon: ShieldCheck },
+  ai: { src: sceneAssets("taller-ia").still, Icon: Robot },
 } as const;
 
 export function Cases({ copy }: { copy: Dictionary["cases"] }) {

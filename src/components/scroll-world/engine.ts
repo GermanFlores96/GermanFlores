@@ -74,9 +74,13 @@ export function mountScrollWorld(container, config) {
   let alive = true;                       // [web]
   const cleanups = [];                    // [web] undo functions run by destroy()
   const blobUrls = [];                    // [web]
+  const downloads = new AbortController(); // [web] destroy() cancels clips still downloading
   const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); cleanups.push(() => target.removeEventListener(type, fn, opts)); }; // [web]
-  // [web] `config.motion === 'full'` is the visitor's explicit opt-in over a reduced-motion system setting.
-  const reduce = config.motion === 'full' ? false : window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // [web] `config.motion`: 'full' always animates, 'still' always shows the posters, anything else follows
+  // the system's prefers-reduced-motion setting.
+  const reduce = config.motion === 'full' ? false
+    : config.motion === 'still' ? true
+    : window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Phone detection. `coarse` is captured once (input type doesn't change mid-session);
   // the ≤860px query is read live via isMobile() so a desktop resize/DevTools toggle
   // switches sources and seek behaviour without a reload.
@@ -214,7 +218,7 @@ export function mountScrollWorld(container, config) {
     s.loading = true;
     // Serve the lighter mobile encode on phones when one was provided.
     const url = (isMobile() && s.clipM) ? s.clipM : s.clip;
-    fetch(url).then(r => r.ok ? r.blob() : Promise.reject(new Error('404')))
+    fetch(url, { signal: downloads.signal }).then(r => r.ok ? r.blob() : Promise.reject(new Error('404')))   // [web] signal
       .then(blob => {
         const v = document.createElement('video');
         v.className = 'sw-scene__video';
@@ -346,6 +350,7 @@ export function mountScrollWorld(container, config) {
       alive = false;
       cleanups.forEach(fn => fn());
       SEGMENTS.forEach(s => { if (s.video) { try { s.video.pause(); s.video.removeAttribute('src'); s.video.load(); } catch (e) {} } });
+      downloads.abort();
       blobUrls.forEach(u => URL.revokeObjectURL(u));
       container.replaceChildren();
       container.classList.remove('sw-root', 'is-done');

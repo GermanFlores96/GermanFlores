@@ -30,6 +30,8 @@ export const es: Dictionary = {
       noticeAnimated:
         "Tu dispositivo pide menos movimiento. El vuelo solo avanza cuando haces scroll, pero puedes verlo con imágenes fijas.",
       noticeStill: "Estás viendo el vuelo con imágenes fijas.",
+      noticeLowData:
+        "Tienes activado el ahorro de datos, así que el vuelo se muestra con imágenes fijas para no descargar video.",
       toStill: "Usar imágenes fijas",
       toAnimated: "Activar el vuelo animado",
       dismiss: "Entendido",

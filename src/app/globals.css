@@ -88,12 +88,12 @@ dd {
 
 /* First paint before the engine mounts: the first scene's poster, portrait on phones. */
 #vuelo {
-  background-image: url("/img/scenes/estudio.webp");
+  background-image: url("/img/v1/scenes/estudio.webp"); /* keep in sync with MEDIA in shared.ts */
 }
 
 @media (max-width: 860px), (hover: none) and (pointer: coarse) {
   #vuelo {
-    background-image: url("/img/scenes/estudio-m.webp");
+    background-image: url("/img/v1/scenes/estudio-m.webp");
   }
 }
 

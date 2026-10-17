@@ -21,10 +21,14 @@ npm start        # servir la build (puerto 3000)
 | Secciones de la página | `src/components/sections/` |
 | Redirección de idioma | `src/proxy.ts` |
 | Estilos, paleta y ajustes del motor para tema oscuro | `src/app/globals.css` |
-| Videos codificados (≈ 73 MB) y pósteres | `public/vid/`, `public/img/scenes/` |
+| Videos (escritorio 720p ≈ 33 MB; móvil 9:16 ≈ 31 MB) y pósteres | `public/vid/v1/`, `public/img/v1/scenes/` |
 
 ## Notas
 
 - El fondo `#0F1428` es el fondo plano de las escenas generadas: no cambiarlo sin regenerar los pósteres.
-- Para añadir el vuelo móvil nativo 9:16: codificar los clips (`-m.mp4`, 720p, `-g 4`) y pasar `clipMobile`, `connectorsMobile` y `stillMobile` en `ScrollWorld.tsx`. El motor ya los usa en teléfonos.
+- **Medios versionados:** vídeos y pósteres se sirven con caché de un año (`next.config.ts`). Para cambiar
+  cualquiera, crea una carpeta nueva (`v2`) y actualiza `MEDIA` en `src/content/shared.ts` y las dos rutas
+  del póster inicial en `globals.css`. Nunca sobrescribas archivos dentro de `v1`.
+- Los teléfonos usan la cadena vertical (`-m.mp4`, 720 de ancho, `-g 4`); el escritorio, 720p 16:9 (`-g 8`).
+- Con ahorro de datos activado se muestran imágenes fijas y no se descarga vídeo hasta que la persona lo pide.
 - Variable opcional `NEXT_PUBLIC_SITE_URL` para el dominio final (canonical, sitemap, og). Por defecto `site.url` en `shared.ts`, que es un marcador.

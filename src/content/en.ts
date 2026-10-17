@@ -30,6 +30,7 @@ export const en: Dictionary = {
       noticeAnimated:
         "Your device asks for less motion. The flight only moves when you scroll, but you can view it as still images.",
       noticeStill: "You are viewing the flight as still images.",
+      noticeLowData: "Data saver is on, so the flight is shown as still images to avoid downloading video.",
       toStill: "Use still images",
       toAnimated: "Turn on the animated flight",
       dismiss: "Got it",
