@@ -1,0 +1,248 @@
+@import "tailwindcss";
+
+/* Palette "Medianoche eléctrica". The background equals the flat background of the generated scenes,
+   so posters, videos and page sections blend with no visible seam. */
+@theme {
+  --color-bg: #0f1428;
+  --color-surface: #141b2e;
+  --color-ink: #e8ecf5;
+  --color-muted: #9aa6c2;
+  --color-violet: #7c5cff;
+  --color-violet-soft: #9b87ff;
+  --color-cyan: #22d3ee;
+  --color-mint: #34d399;
+  --color-line: rgb(232 236 245 / 0.12);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+html {
+  background: var(--color-bg);
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li,
+dd {
+  text-wrap: pretty;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   scroll-world engine: dark theme + type scale of the design system.
+   The engine injects its defaults inside `@layer sw`; these unlayered rules always win.
+   --------------------------------------------------------------------------- */
+.sw-root {
+  --sw-bg: #0f1428;
+  --sw-ink: #e8ecf5;
+  --sw-ink-soft: #9aa6c2;
+  --sw-font-display: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --sw-font-body: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* The site navigation replaces the engine's own top bar. */
+.sw-topbar {
+  display: none;
+}
+
+/* Once the page sections fully cover the flight, stop painting its fixed layers. */
+.sw-root.is-done > .sw-sky,
+.sw-root.is-done > .sw-stage,
+.sw-root.is-done > .sw-copylayer,
+.sw-root.is-done > .sw-route,
+.sw-root.is-done > .sw-hint,
+.sw-root.is-done > .sw-scrollbar {
+  visibility: hidden;
+}
+
+/* Wider than the engine default so long titles take three lines, not four, and the tags stay in view. */
+@media (min-width: 861px) {
+  .sw-copy {
+    width: min(46vw, 580px);
+  }
+}
+
+/* First paint before the engine mounts: the first scene's poster, portrait on phones. */
+#vuelo {
+  background-image: url("/img/scenes/estudio.webp");
+}
+
+@media (max-width: 860px), (hover: none) and (pointer: coarse) {
+  #vuelo {
+    background-image: url("/img/scenes/estudio-m.webp");
+  }
+}
+
+/* The skip button and the reduced motion notice only belong to the flight. */
+#vuelo.is-done ~ .sw-flight-ui {
+  display: none;
+}
+
+.sw-copy__num {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.sw-copy__eyebrow {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 600;
+}
+
+.sw-copy__title {
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  text-shadow: none;
+  background: linear-gradient(90deg, #ffffff, #9b9b9b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sw-copy__body {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  text-wrap: pretty;
+  color: var(--color-ink);
+  text-shadow: none;
+}
+
+@media (min-width: 768px) {
+  .sw-copy__title {
+    font-size: 3rem;
+    line-height: 1;
+  }
+}
+
+@media (min-width: 1280px) {
+  .sw-copy__title {
+    font-size: 3.75rem;
+    line-height: 1;
+  }
+}
+
+@media (max-width: 860px) {
+  /* The 16:9 clip is cropped on phones, so give the copy a firmer backing until the native 9:16 chain exists. */
+  .sw-copylayer::before {
+    height: 74%;
+    background: linear-gradient(
+      0deg,
+      var(--sw-bg) 14%,
+      color-mix(in srgb, var(--sw-bg) 80%, transparent) 52%,
+      transparent 100%
+    );
+  }
+  .sw-copy__title {
+    font-size: 2.25rem;
+    line-height: 2.5rem;
+  }
+  .sw-copy__body {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
+
+.sw-copy__tags li {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  background: rgb(124 92 255 / 0.18);
+  border: 1px solid rgb(155 135 255 / 0.4);
+  padding: 4px 12px;
+}
+
+.sw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: 8px 12px;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  border-radius: 8px;
+  transition:
+    transform 700ms var(--ease-fluid),
+    background-color 700ms var(--ease-fluid);
+}
+
+.sw-btn--primary {
+  color: #ffffff;
+  background: var(--color-violet);
+}
+
+.sw-btn--primary:hover {
+  background: var(--color-violet-soft);
+  transform: translateY(-2px);
+}
+
+.sw-btn--ghost {
+  color: var(--color-ink);
+  border: 1px solid rgb(232 236 245 / 0.3);
+}
+
+.sw-btn--ghost:hover {
+  background: rgb(232 236 245 / 0.08);
+  transform: translateY(-2px);
+}
+
+.sw-btn:active {
+  transform: scale(0.98);
+}
+
+.sw-route__label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+}
+
+.sw-hint {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: var(--color-muted);
+}
+
+/* No JavaScript: show everything instead of leaving it hidden. */
+@media (scripting: none) {
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .word {
+    color: var(--color-ink) !important;
+  }
+}
