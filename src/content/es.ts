@@ -23,20 +23,22 @@ export const es: Dictionary = {
     skip: "Saltar al contenido",
   },
   flight: {
-    hint: "Desliza para volar",
-    skip: "Saltar el vuelo",
+    hint: "Desliza para recorrer",
+    skip: "Saltar el recorrido",
     summaryLabel: "Recorrido por mi trabajo",
+    loading: "Cargando el recorrido",
+    more: "Sigue bajando: casos, stack y trayectoria",
     motion: {
       noticeAnimated:
-        "Tu dispositivo pide menos movimiento. El vuelo solo avanza cuando haces scroll, pero puedes verlo con imágenes fijas.",
-      noticeStill: "Estás viendo el vuelo con imágenes fijas.",
+        "Tu dispositivo pide menos movimiento. El recorrido solo avanza cuando haces scroll, pero puedes verlo con imágenes fijas.",
+      noticeStill: "Estás viendo el recorrido con imágenes fijas.",
       noticeLowData:
-        "Tienes activado el ahorro de datos, así que el vuelo se muestra con imágenes fijas para no descargar video.",
+        "Tienes activado el ahorro de datos, así que el recorrido se muestra con imágenes fijas para no descargar video.",
       toStill: "Usar imágenes fijas",
-      toAnimated: "Activar el vuelo animado",
+      toAnimated: "Activar el recorrido animado",
       dismiss: "Entendido",
     },
-    finalCta: { primary: "Escríbeme", secondary: "LinkedIn" },
+    finalCta: { primary: "Ver mi perfil", secondary: "Escríbeme" },
     scenes: [
       {
         label: "Estudio",
@@ -77,7 +79,7 @@ export const es: Dictionary = {
         label: "Contacto",
         eyebrow: "Hablemos",
         title: "¿Construimos lo siguiente?",
-        body: "Cuéntame tu idea o tu proyecto.",
+        body: "Abajo tienes mis casos, mi stack y mi trayectoria.",
         tags: [],
       },
     ],

@@ -23,19 +23,21 @@ export const en: Dictionary = {
     skip: "Skip to content",
   },
   flight: {
-    hint: "Scroll to fly",
-    skip: "Skip the flight",
+    hint: "Scroll to explore",
+    skip: "Skip the tour",
     summaryLabel: "A tour of my work",
+    loading: "Loading the tour",
+    more: "Keep scrolling: work, stack and experience",
     motion: {
       noticeAnimated:
-        "Your device asks for less motion. The flight only moves when you scroll, but you can view it as still images.",
-      noticeStill: "You are viewing the flight as still images.",
-      noticeLowData: "Data saver is on, so the flight is shown as still images to avoid downloading video.",
+        "Your device asks for less motion. The tour only moves when you scroll, but you can view it as still images.",
+      noticeStill: "You are viewing the tour as still images.",
+      noticeLowData: "Data saver is on, so the tour is shown as still images to avoid downloading video.",
       toStill: "Use still images",
-      toAnimated: "Turn on the animated flight",
+      toAnimated: "Turn on the animated tour",
       dismiss: "Got it",
     },
-    finalCta: { primary: "Email me", secondary: "LinkedIn" },
+    finalCta: { primary: "See my profile", secondary: "Email me" },
     scenes: [
       {
         label: "Studio",
@@ -76,7 +78,7 @@ export const en: Dictionary = {
         label: "Contact",
         eyebrow: "Let us talk",
         title: "Shall we build what is next?",
-        body: "Tell me about your idea or your project.",
+        body: "Below you will find my work, my stack and my experience.",
         tags: [],
       },
     ],

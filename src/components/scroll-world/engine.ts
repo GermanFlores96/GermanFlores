@@ -4,7 +4,10 @@
      1. mountScrollWorld() is exported and returns { destroy() } (React unmount / locale switch).
      2. The container gets `is-done` once the flight is fully covered by the page sections,
         so the fixed layers stop rendering (see globals.css).
-     3. Resources (listeners, rAF, blob URLs, DOM) are tracked so destroy() leaves nothing behind. */
+     3. Resources (listeners, rAF, blob URLs, DOM, downloads) are tracked so destroy() leaves nothing behind.
+     4. Clip downloads go through a priority queue with progress and a loading indicator (pump/startDownload).
+     5. Guided stops (`config.stations`): when scrolling stops inside the flight, the camera finishes the
+        trip to the next or previous station on its own. `config.onSection(i)` reports the active scene. */
 /* ============================================================================
    scroll-world — portable scroll-scrubbed camera-flight engine
    ----------------------------------------------------------------------------
@@ -74,7 +77,6 @@ export function mountScrollWorld(container, config) {
   let alive = true;                       // [web]
   const cleanups = [];                    // [web] undo functions run by destroy()
   const blobUrls = [];                    // [web]
-  const downloads = new AbortController(); // [web] destroy() cancels clips still downloading
   const on = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); cleanups.push(() => target.removeEventListener(type, fn, opts)); }; // [web]
   // [web] `config.motion`: 'full' always animates, 'still' always shows the posters, anything else follows
   // the system's prefers-reduced-motion setting.
@@ -149,10 +151,18 @@ export function mountScrollWorld(container, config) {
   hint.appendChild(el('i'));
   const track = el('div', 'sw-track');
 
-  [sky, scrollbar, topbar, stage, copylayer, route, hint, track].forEach(n => container.appendChild(n));
+  // [web] download indicator: shown (after a short delay, see globals.css) while the clip of the current
+  // segment is still arriving, so a slow connection reads as "loading" instead of "frozen".
+  const loading = el('div', 'sw-loading');
+  loading.setAttribute('role', 'status');
+  loading.innerHTML = '<span class="sw-loading__text"></span><i class="sw-loading__bar"><b></b></i>';
+  const loadingText = loading.firstChild, loadingBar = loading.lastChild.firstChild;
+
+  [sky, scrollbar, topbar, stage, copylayer, route, hint, loading, track].forEach(n => container.appendChild(n));
 
   // segment scenes
-  SEGMENTS.forEach(s => {
+  SEGMENTS.forEach((s, idx) => {
+    s.idx = idx; s.downloading = false; s.progress = null; s.retryAt = 0; s.abort = null;   // [web]
     const scene = el('div', 'sw-scene'); scene.style.setProperty('--sw-accent', s.accent || '');
     const img = el('img', 'sw-scene__still'); img.alt = ''; img.decoding = 'async'; img.loading = 'lazy';
     const poster = (isMobile() && s.stillM) ? s.stillM : s.still;
@@ -193,6 +203,7 @@ export function mountScrollWorld(container, config) {
   // mid-scene pause. f(0)=0, f(1)=1 always, so seam frames are untouched.
   const lingerEase = (x, L) => { L = clamp(L); const c = x - 0.5; return (1 - L) * x + L * (4 * c * c * c + 0.5); };
   let vh = window.innerHeight, stageX = 0, totalW = 0, activeIndex = -1, ticking = false;
+  let curSeg = 0;                       // [web] segment the scroll position is in (drives downloads and the indicator)
   let laidOutW = window.innerWidth;   // width the current layout was computed at (see onResize)
 
   function layout() {
@@ -203,38 +214,103 @@ export function mountScrollWorld(container, config) {
     SEGMENTS.forEach(s => { s.start = off * vh; off += s.w; s.end = off * vh; });
     totalW = off;
     track.style.height = (totalW * vh + vh) + 'px';   // +1vh so the last flight completes
+    computeStations();                                // [web]
     read();
   }
 
   function jumpTo(i) {
+    if (stations.length) { glideTo(stations[i]); return; }   // [web] land where the copy is fully visible
     const seg = SECTIONS[i]._seg;
     window.scrollTo({ top: seg.start + (seg.end - seg.start) * 0.5, behavior: reduce ? 'auto' : 'smooth' });
   }
 
-  function loadClip(s) {
-    // Under prefers-reduced-motion we never load the clips at all — the stills stay up
-    // and simply cross-dissolve as you scroll. No scrubbed video motion, no decode cost.
-    if (reduce || s.loading || !s.clip) return;
-    s.loading = true;
+  // [web] ---- clip downloads -------------------------------------------------------------------------
+  // The original engine requested a clip once the scroll came within 1.6 screens of it and downloaded it
+  // whole before it could show a frame. A quick scroller reached clips that were still arriving and saw a
+  // frozen poster. Now the segments around the current one are queued by priority:
+  //   - the current segment first, alone, until it is ready (a second parallel download would only slow it);
+  //   - then up to MAX_AHEAD segments ahead and MAX_BEHIND behind, two downloads at a time;
+  //   - jumping far away aborts the farthest running download so the new current one starts at once.
+  // Never more than MAX_AHEAD + MAX_BEHIND + 1 clips around the visitor, so data use stays bounded.
+  const MAX_AHEAD = 3, MAX_BEHIND = 1;
+
+  function pump() {
+    // Under reduced motion / still mode we never load the clips at all: the stills simply cross-dissolve.
+    if (reduce || !alive) return;
+    const cur = SEGMENTS[curSeg];
+    const order = [curSeg];
+    for (let k = 1; k <= MAX_AHEAD; k++) order.push(curSeg + k);
+    for (let k = 1; k <= MAX_BEHIND; k++) order.push(curSeg - k);
+    const maxActive = cur.hasClip ? 2 : 1;
+    const now = performance.now();
+    for (const i of order) {
+      const s = SEGMENTS[i];
+      if (!s || !s.clip || s.hasClip || s.downloading || now < s.retryAt) continue;
+      const running = SEGMENTS.filter(x => x.downloading);
+      if (running.length >= maxActive) {
+        if (s !== cur) break;                        // only the current segment may bump a running download
+        running.sort((a, b) => Math.abs(b.idx - curSeg) - Math.abs(a.idx - curSeg))[0].abort.abort();
+      }
+      startDownload(s);
+    }
+  }
+
+  function startDownload(s) {
+    s.downloading = true; s.progress = null; s.abort = new AbortController();
     // Serve the lighter mobile encode on phones when one was provided.
     const url = (isMobile() && s.clipM) ? s.clipM : s.clip;
-    fetch(url, { signal: downloads.signal }).then(r => r.ok ? r.blob() : Promise.reject(new Error('404')))   // [web] signal
-      .then(blob => {
-        const v = document.createElement('video');
-        v.className = 'sw-scene__video';
-        v.muted = true; v.playsInline = true; v.preload = 'auto';
-        v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
-        if (!alive) return;                                   // [web] unmounted while fetching
-        const objUrl = URL.createObjectURL(blob); blobUrls.push(objUrl);   // [web]
-        v.src = objUrl;
-        v.addEventListener('loadedmetadata', () => { s.ready = true; read(); });
-        // Reveal the video (hide the still poster) only once a real frame has
-        // painted — on iOS a seeked-but-never-played muted video stays blank, so
-        // hiding the still on metadata alone would flash an empty scene.
-        v.addEventListener('seeked', () => { s.el.classList.add('has-clip'); }, { once: true });
-        v.addEventListener('loadeddata', () => { try { v.pause(); } catch (e) {} if (userReady) primeVideo(v); });
-        s.el.appendChild(v); s.video = v; s.hasClip = true;
-      }).catch(() => { s.loading = false; });
+    fetch(url, { signal: s.abort.signal })
+      .then(r => {
+        if (!r.ok) throw new Error('http ' + r.status);
+        const total = +r.headers.get('Content-Length') || 0;
+        if (!r.body || !r.body.getReader) return r.blob();
+        const reader = r.body.getReader(), chunks = [];
+        let got = 0;
+        const pull = () => reader.read().then(({ done, value }) => {
+          if (done) return new Blob(chunks, { type: 'video/mp4' });
+          chunks.push(value); got += value.length;
+          if (total) { s.progress = Math.min(1, got / total); if (s.idx === curSeg) updateLoading(); }
+          return pull();
+        });
+        return pull();
+      })
+      .then(blob => { s.downloading = false; s.progress = 1; attachVideo(s, blob); pump(); })
+      .catch(() => {
+        s.downloading = false; s.progress = null;
+        if (!alive) return;
+        // Network error (an abort by pump() is not one): try again in a few seconds even if nobody scrolls.
+        if (!s.abort.signal.aborted) { s.retryAt = performance.now() + 4000; setTimeout(pump, 4100); }
+        else pump();
+        updateLoading();
+      });
+  }
+
+  function attachVideo(s, blob) {
+    if (!alive) return;                                       // unmounted while fetching
+    const v = document.createElement('video');
+    v.className = 'sw-scene__video';
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', '');
+    const objUrl = URL.createObjectURL(blob); blobUrls.push(objUrl);
+    v.src = objUrl;
+    v.addEventListener('loadedmetadata', () => { s.ready = true; updateLoading(); read(); });
+    // Reveal the video (hide the still poster) only once a real frame has
+    // painted — on iOS a seeked-but-never-played muted video stays blank, so
+    // hiding the still on metadata alone would flash an empty scene.
+    v.addEventListener('seeked', () => { s.el.classList.add('has-clip'); }, { once: true });
+    v.addEventListener('loadeddata', () => { try { v.pause(); } catch (e) {} if (userReady) primeVideo(v); });
+    s.el.appendChild(v); s.video = v; s.hasClip = true;
+  }
+
+  function updateLoading() {
+    const s = SEGMENTS[curSeg];
+    const waiting = !reduce && !!s && !s.ready && !!s.clip && window.scrollY < (totalW + 1) * vh - 2;
+    loading.classList.toggle('is-on', waiting);
+    if (!waiting) return;
+    const pct = s.progress == null ? null : Math.round(s.progress * 100);
+    loadingText.textContent = (config.loadingLabel || 'Loading') + (pct == null ? '' : ' · ' + pct + ' %');
+    loadingBar.style.transform = 'scaleX(' + (pct == null ? 0.25 : s.progress) + ')';
+    loading.classList.toggle('is-indeterminate', pct == null);
   }
 
   function read() {
@@ -242,10 +318,10 @@ export function mountScrollWorld(container, config) {
     const fade = CROSSFADE * vh;
     let ci = 0;
     for (let i = 0; i < NSEG; i++) if (y >= SEGMENTS[i].start) ci = i;
+    curSeg = ci;                                  // [web]
 
     for (let i = 0; i < NSEG; i++) {
       const s = SEGMENTS[i];
-      if (y > s.start - 1.6 * vh && y < s.end + 1.6 * vh) loadClip(s);
       const local = clamp((y - s.start) / (s.end - s.start), 0, 1);
       s.target = s.linger ? lingerEase(local, s.linger) : local;
       let outside = 0;
@@ -281,7 +357,9 @@ export function mountScrollWorld(container, config) {
       dots.forEach((d, k) => d.classList.toggle('is-active', k === near));
       nav.querySelectorAll('.sw-nav__item').forEach((n, k) => n.classList.toggle('is-active', k === near));
       container.style.setProperty('--sw-accent', SECTIONS[near].accent || '');
+      if (config.onSection) config.onSection(near);   // [web]
     }
+    pump(); updateLoading();                          // [web] download queue + indicator follow the scroll
     scrollbarFill.style.transform = `scaleX(${clamp(y / (totalW * vh))})`;
     // [web] sections now cover the flight: the track ends at (totalW + 1) vh, where #contenido starts.
     container.classList.toggle('is-done', y >= (totalW + 1) * vh - 2);
@@ -311,7 +389,7 @@ export function mountScrollWorld(container, config) {
   // iOS needs a user gesture before a muted video will decode/paint reliably. On the
   // first touch we prime every loaded clip (muted play→pause) so the first seek is
   // instant instead of showing a blank frame. `userReady` also makes freshly-loaded
-  // clips prime themselves (see loadClip).
+  // clips prime themselves (see attachVideo).
   let userReady = false;
   function primeVideo(v) {
     if (!isMobile() || !v) return;
@@ -326,9 +404,85 @@ export function mountScrollWorld(container, config) {
   on(window, 'pointerdown', onFirstGesture, { once: true, passive: true });
   on(window, 'touchstart', onFirstGesture, { once: true, passive: true });
 
+  // [web] ---- guided stops ---------------------------------------------------------------------------
+  // The copy of each scene is only fully visible near one scroll position (its "station"), so stopping in a
+  // bridge or at the edge of a scene left an empty screen. When the visitor stops scrolling inside the
+  // flight, the camera finishes the trip on its own to the station in the direction they were heading.
+  // The last station is the start of the page sections, so a nudge past the final scene lands on the profile.
+  // Scrolling stays free in between; any wheel, touch, key or click cancels the glide at once.
+  const STATIONS_ON = config.stations === true;
+  let stations = [], glide = null, restY = window.scrollY, dir = 0, touching = false, settleTimer = 0;
+
+  function computeStations() {
+    if (!STATIONS_ON) return;
+    stations = SECTIONS.map((s, i) => {
+      const seg = s._seg, w = seg.end - seg.start;
+      if (i === 0) return 0;                               // the first scene greets at the very top
+      if (i === N - 1) return seg.start + w * 0.75;        // last copy and buttons are complete from 40 %
+      return seg.start + w * 0.5;                          // the copy of a middle scene peaks at its centre
+    });
+    stations.push((totalW + 1) * vh);                      // where #contenido starts
+  }
+
+  function cancelGlide() { if (glide) { cancelAnimationFrame(glide.raf); glide = null; } }
+
+  function glideTo(target) {
+    cancelGlide();
+    const from = window.scrollY, dist = Math.abs(target - from);
+    if (dist < 2) return;
+    // 'instant' on every frame: the page sets `scroll-behavior: smooth`, which would turn each step into its own animation.
+    const go = y => window.scrollTo({ top: y, left: 0, behavior: 'instant' });
+    if (reduce) { go(target); restY = target; return; }
+    const dur = clamp(600 + (dist / vh) * 450, 700, 2200), t0 = performance.now();
+    glide = { raf: 0 };
+    const step = now => {
+      if (!glide || !alive) return;
+      const k = clamp((now - t0) / dur);
+      go(from + (target - from) * (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2));
+      if (k < 1) glide.raf = requestAnimationFrame(step); else { glide = null; restY = target; }
+    };
+    glide.raf = requestAnimationFrame(step);
+  }
+
+  function scheduleSettle() {
+    if (!STATIONS_ON || glide) return;
+    dir = Math.sign(window.scrollY - restY) || dir;
+    clearTimeout(settleTimer);
+    if (!touching) settleTimer = setTimeout(settle, 220);
+  }
+
+  function settle() {
+    if (!alive || glide || touching || !stations.length) return;
+    const y = window.scrollY, last = stations.length - 1, heading = dir;
+    dir = 0;
+    if (y >= stations[last] - 2) { restY = y; return; }    // already in the page sections: leave it alone
+    let i = 0;
+    while (i < last - 1 && y >= stations[i + 1]) i++;      // stations[i] <= y < stations[i + 1]
+    const a = stations[i], b = stations[i + 1], f = (y - a) / (b - a);
+    // A short push is enough to go on: 15 % of the way, but never more than 0.3 screens, because the
+    // scenes are 2 to 3 screens apart and 15 % of that is more than a thumb flick on a phone.
+    const need = Math.min(0.15 * (b - a), 0.3 * vh);
+    let target;
+    if (f < 0.02) target = a;
+    else if (f > 0.98) target = b;
+    else if (heading > 0) target = y - a > need ? b : a;   // heading down
+    else if (heading < 0) target = b - y > need ? a : b;   // heading up, towards the previous one
+    else target = f < 0.5 ? a : b;
+    restY = target;
+    if (Math.abs(target - y) > 2) glideTo(target);
+  }
+
+  on(window, 'wheel', cancelGlide, { passive: true });
+  on(window, 'keydown', cancelGlide);
+  on(window, 'pointerdown', cancelGlide, { passive: true });
+  on(window, 'touchstart', () => { touching = true; clearTimeout(settleTimer); cancelGlide(); }, { passive: true });
+  on(window, 'touchend', () => { touching = false; scheduleSettle(); }, { passive: true });
+  on(window, 'touchcancel', () => { touching = false; scheduleSettle(); }, { passive: true });
+  cleanups.push(() => { cancelGlide(); clearTimeout(settleTimer); });
+
   // Particles are a per-frame cost we can't afford alongside video scrubbing on a phone.
   seedParticles(particles, reduce || coarse);
-  on(window, 'scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(read); } }, { passive: true });
+  on(window, 'scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(read); } scheduleSettle(); }, { passive: true });
   // Mobile browsers fire `resize` every time the URL bar slides in/out. Re-running
   // layout() there rebuilds the track height and yanks the scroll position, so on
   // touch we ignore height-only changes and only relayout when the width actually
@@ -350,7 +504,7 @@ export function mountScrollWorld(container, config) {
       alive = false;
       cleanups.forEach(fn => fn());
       SEGMENTS.forEach(s => { if (s.video) { try { s.video.pause(); s.video.removeAttribute('src'); s.video.load(); } catch (e) {} } });
-      downloads.abort();
+      SEGMENTS.forEach(s => { if (s.abort) s.abort.abort(); });   // clips still downloading
       blobUrls.forEach(u => URL.revokeObjectURL(u));
       container.replaceChildren();
       container.classList.remove('sw-root', 'is-done');

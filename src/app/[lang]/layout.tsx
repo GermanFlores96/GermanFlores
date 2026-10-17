@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { VersionCheck } from "@/components/VersionCheck";
 import { getDictionary } from "@/content/dictionaries";
 import { site } from "@/content/shared";
 import { hasLocale, locales } from "@/content/types";
@@ -67,6 +68,7 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
     <html lang={lang} className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
       <body className="bg-bg text-ink min-h-dvh font-sans">
         {children}
+        <VersionCheck />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(person) }}

@@ -37,6 +37,8 @@ export type Dictionary = {
     hint: string;
     skip: string;
     summaryLabel: string;
+    loading: string;
+    more: string;
     motion: {
       noticeAnimated: string;
       noticeStill: string;

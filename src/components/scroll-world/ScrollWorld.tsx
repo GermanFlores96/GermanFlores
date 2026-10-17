@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowDown } from "@phosphor-icons/react";
 import { mountScrollWorld } from "./engine";
 import { connectors, connectorsMobile, sceneAssets, scenes } from "@/content/shared";
@@ -11,10 +11,11 @@ type Props = {
   hint: string;
   skip: string;
   summaryLabel: string;
+  loading: string;
+  more: string;
   motion: Dictionary["flight"]["motion"];
   cta: { primary: string; secondary: string };
   email: string;
-  linkedin: string;
 };
 
 // The flight is animated for everyone by default: the video never plays on its own, it only advances while the
@@ -75,8 +76,10 @@ const writeChoice = (choice: Choice) => {
 const buttonClass =
   "min-h-12 rounded-lg px-3 py-2 text-base font-semibold transition-all duration-700 ease-fluid active:scale-[0.98]";
 
-export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email, linkedin }: Props) {
+export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, motion, cta, email }: Props) {
   const host = useRef<HTMLDivElement>(null);
+  // Scene the engine reports as active; the last one shows the "keep scrolling" cue.
+  const [active, setActive] = useState(0);
   const reduced = useSyncExternalStore(subscribeReduced, readReduced, () => false);
   const choice = useSyncExternalStore(subscribeChoice, readChoice, () => null);
   const lowData = useSyncExternalStore(subscribeLowData, readLowData, () => false);
@@ -89,6 +92,11 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
   const config = useMemo(
     () => ({
       hint,
+      loadingLabel: loading,
+      onSection: setActive,
+      // When scrolling stops between scenes, the camera finishes the trip to the nearest scene in the direction
+      // the visitor was heading, so nobody is left on an empty stretch without copy.
+      stations: true,
       motion: stills ? "still" : "full",
       nav: false,
       atmosphere: false,
@@ -107,9 +115,10 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
         tags: copy[i].tags,
         ...(i === scenes.length - 1
           ? {
+              // The last scene must not read as an ending: its main action leads on to the profile sections.
               cta: {
-                primary: { label: cta.primary, href: `mailto:${email}` },
-                secondary: { label: cta.secondary, href: linkedin },
+                primary: { label: cta.primary, href: "#casos" },
+                secondary: { label: cta.secondary, href: `mailto:${email}` },
               },
             }
           : {}),
@@ -117,7 +126,7 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
       connectors,
       connectorsMobile,
     }),
-    [copy, hint, cta, email, linkedin, stills],
+    [copy, hint, loading, cta, email, stills],
   );
 
   useEffect(() => {
@@ -164,6 +173,17 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, motion, cta, email
         // Poster of the first scene until the engine mounts (desktop or portrait, see globals.css).
         className="bg-bg min-h-svh bg-cover bg-center"
       />
+
+      {/* On the last scene: it must not read as the end of the page. Hidden with the rest once the sections cover it. */}
+      <div
+        aria-hidden
+        className={`sw-more border-line bg-bg/70 text-ink pointer-events-none fixed bottom-4 left-1/2 z-[340] flex -translate-x-1/2 items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold backdrop-blur-xl transition-all duration-700 ease-fluid ${
+          active === scenes.length - 1 ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
+        }`}
+      >
+        {more}
+        <ArrowDown size={16} weight="bold" className="sw-bounce" aria-hidden />
+      </div>
 
       {/* Sibling of the host so CSS can hide it once the flight is over (`#vuelo.is-done ~ .sw-flight-ui`). */}
       <div className="sw-flight-ui pointer-events-none fixed inset-x-4 top-24 z-[350] flex flex-col items-end gap-2 sm:inset-x-auto sm:top-auto sm:right-4 sm:bottom-4 sm:w-[28rem]">

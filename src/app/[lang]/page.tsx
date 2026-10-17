@@ -42,10 +42,11 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
           hint={dict.flight.hint}
           skip={dict.flight.skip}
           summaryLabel={dict.flight.summaryLabel}
+          loading={dict.flight.loading}
+          more={dict.flight.more}
           motion={dict.flight.motion}
           cta={dict.flight.finalCta}
           email={site.email}
-          linkedin={site.linkedin}
         />
 
         {/* Sections slide up over the fixed flight layers, so they need an opaque background and a higher stack. */}
