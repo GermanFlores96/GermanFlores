@@ -57,7 +57,7 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
     "@context": "https://schema.org",
     "@type": "Person",
     name: site.name,
-    jobTitle: "Senior Mobile Engineer",
+    jobTitle: "Senior Software Engineer",
     description: meta.description,
     email: `mailto:${site.email}`,
     sameAs: [site.linkedin],

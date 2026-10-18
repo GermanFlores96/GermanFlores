@@ -2,14 +2,14 @@ import type { Dictionary } from "./types";
 
 export const en: Dictionary = {
   meta: {
-    title: "German Flores · Senior Mobile Engineer · Mobile, web and AI",
+    title: "German Flores · Senior Software Engineer · Mobile, web and AI",
     description:
-      "Mobile engineer with 9+ years building secure iOS and Android apps in fintech, banking and payments. Today I also build with React Native, Next.js and AI agents.",
+      "Software engineer with 9+ years building secure software in fintech, banking and payments: iOS and Android apps, web with Next.js and tools with AI agents.",
     ogLocale: "en_US",
-    ogAlt: "German Flores and his clay diorama world: secure apps, at AI speed.",
+    ogAlt: "German Flores and his clay diorama world: secure software, at AI speed.",
   },
   nav: {
-    brandRole: "Senior Mobile Engineer",
+    brandRole: "Senior Software Engineer",
     links: [
       { id: "casos", label: "Work" },
       { id: "stack", label: "Stack" },
@@ -47,9 +47,9 @@ export const en: Dictionary = {
     scenes: [
       {
         label: "Studio",
-        eyebrow: "Senior Mobile Engineer · Mobile, web and AI",
-        title: "Secure apps, at AI speed.",
-        body: "9+ years building mobile apps where data and money matter. Today I also build with React Native, Next.js and AI agents.",
+        eyebrow: "Senior Software Engineer · Mobile, web and AI",
+        title: "Secure software, at AI speed.",
+        body: "9+ years building software where data and money matter: iOS and Android apps, web with Next.js and AI agents.",
         tags: ["iOS and Android", "React Native", "Next.js", "Applied AI"],
       },
       {
@@ -91,7 +91,7 @@ export const en: Dictionary = {
   },
   tagline: {
     lines:
-      "I build apps people trust with their data and their money. Now I build them with AI, without letting go of quality.",
+      "I build software people trust with their data and their money. Now I build it with AI, without letting go of quality.",
   },
   cases: {
     eyebrow: "Selected work",
@@ -175,7 +175,7 @@ export const en: Dictionary = {
   },
   career: {
     eyebrow: "Experience",
-    title: "Building apps since 2017.",
+    title: "Building software since 2017.",
     jobs: [
       {
         role: "Own projects",
@@ -214,9 +214,9 @@ export const en: Dictionary = {
   },
   about: {
     eyebrow: "About",
-    title: "From mobile banking to the web and AI.",
+    title: "Software for what cannot fail.",
     paragraphs: [
-      "I am a computer engineer. I have spent more than 9 years building mobile apps for banking, where a mistake costs money and security is not negotiable.",
+      "I am a computer engineer. I have spent more than 9 years building software for banking, mostly iOS and Android apps, where a mistake costs money and security is not negotiable.",
       "I now bring that discipline to other ground: online stores with Next.js, apps with React Native and AI tools that help me build faster without losing judgment. I have guided teams with Scrum and Kanban, and I like solving the technical problems others prefer to avoid.",
     ],
     facts: [

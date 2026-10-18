@@ -2,14 +2,14 @@ import type { Dictionary } from "./types";
 
 export const es: Dictionary = {
   meta: {
-    title: "German Flores · Senior Mobile Engineer · Móvil, web e IA",
+    title: "German Flores · Senior Software Engineer · Móvil, web e IA",
     description:
-      "Ingeniero móvil con más de 9 años construyendo apps seguras para iOS y Android en fintech, banca y pagos. Hoy también construyo con React Native, Next.js y agentes de IA.",
+      "Ingeniero de software con más de 9 años construyendo software seguro en fintech, banca y pagos: apps para iOS y Android, web con Next.js y herramientas con agentes de IA.",
     ogLocale: "es_VE",
-    ogAlt: "German Flores y su mundo de diorama: apps seguras, a la velocidad de la IA.",
+    ogAlt: "German Flores y su mundo de diorama: software seguro, a la velocidad de la IA.",
   },
   nav: {
-    brandRole: "Senior Mobile Engineer",
+    brandRole: "Senior Software Engineer",
     links: [
       { id: "casos", label: "Casos" },
       { id: "stack", label: "Stack" },
@@ -48,9 +48,9 @@ export const es: Dictionary = {
     scenes: [
       {
         label: "Estudio",
-        eyebrow: "Senior Mobile Engineer · Móvil, web e IA",
-        title: "Apps seguras, a la velocidad de la IA.",
-        body: "Más de 9 años construyendo apps móviles donde importan los datos y el dinero. Hoy también construyo con React Native, Next.js y agentes de IA.",
+        eyebrow: "Senior Software Engineer · Móvil, web e IA",
+        title: "Software seguro, a la velocidad de la IA.",
+        body: "Más de 9 años construyendo software donde importan los datos y el dinero: apps para iOS y Android, web con Next.js y agentes de IA.",
         tags: ["iOS y Android", "React Native", "Next.js", "IA aplicada"],
       },
       {
@@ -92,7 +92,7 @@ export const es: Dictionary = {
   },
   tagline: {
     lines:
-      "Construyo apps en las que la gente confía sus datos y su dinero. Ahora las construyo con IA, sin soltar el control de la calidad.",
+      "Construyo software en el que la gente confía sus datos y su dinero. Ahora lo construyo con IA, sin soltar el control de la calidad.",
   },
   cases: {
     eyebrow: "Casos destacados",
@@ -176,7 +176,7 @@ export const es: Dictionary = {
   },
   career: {
     eyebrow: "Trayectoria",
-    title: "Desde 2017 construyendo apps.",
+    title: "Desde 2017 construyendo software.",
     jobs: [
       {
         role: "Proyectos propios",
@@ -215,9 +215,9 @@ export const es: Dictionary = {
   },
   about: {
     eyebrow: "Sobre mí",
-    title: "De la banca móvil a la web y la IA.",
+    title: "Software para lo que no puede fallar.",
     paragraphs: [
-      "Soy ingeniero en informática. Llevo más de 9 años construyendo apps móviles para banca, donde un error cuesta dinero y la seguridad no se negocia.",
+      "Soy ingeniero en informática. Llevo más de 9 años construyendo software para banca, sobre todo apps para iOS y Android, donde un error cuesta dinero y la seguridad no se negocia.",
       "Esa disciplina la llevo ahora a otros terrenos: tiendas en línea con Next.js, apps con React Native y herramientas de IA que me ayudan a construir más rápido sin perder el criterio. He guiado equipos con Scrum y Kanban, y me gusta resolver los problemas técnicos que otros prefieren evitar.",
     ],
     facts: [
