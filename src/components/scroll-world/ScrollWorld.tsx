@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+// Previous tour: the camera is scrubbed by the scroll position. Kept as a one line fallback
+// (`TOUR = "scrub"` in src/content/shared.ts); the current tour lives in src/components/tour.
+
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown } from "@phosphor-icons/react";
 import { mountScrollWorld } from "./engine";
+import { MotionNotice } from "@/components/MotionNotice";
+import { useMotionPrefs } from "@/lib/motion";
 import { connectors, connectorsMobile, sceneAssets, scenes } from "@/content/shared";
 import type { Dictionary, FlightCopy } from "@/content/types";
 
@@ -18,75 +23,11 @@ type Props = {
   email: string;
 };
 
-// The flight is animated for everyone by default: the video never plays on its own, it only advances while the
-// visitor scrolls. Many systems report `prefers-reduced-motion` without the person knowing (Windows with animations
-// off, power saver, remote desktop), so that signal alone must not turn the main experience into still images.
-// People who do want less motion get a visible choice, remembered for the session (sessionStorage, not a cookie).
-// Data saver is different: it is an explicit request to spend less data, so those visitors start with the posters
-// (no video downloads) and can turn the flight on.
-const REDUCED = "(prefers-reduced-motion: reduce)";
-const CHOICE_KEY = "sw-motion";
-const CHOICE_EVENT = "sw-motion-change";
-type Choice = "still" | "animated" | "ack" | null;
-
-const subscribeReduced = (notify: () => void) => {
-  const query = window.matchMedia(REDUCED);
-  query.addEventListener("change", notify);
-  return () => query.removeEventListener("change", notify);
-};
-const readReduced = () => window.matchMedia(REDUCED).matches;
-
-// Network Information API: Chromium browsers only; elsewhere it is simply absent and the flight loads as usual.
-type NetworkInfo = EventTarget & { saveData?: boolean; effectiveType?: string };
-const connection = () => (navigator as Navigator & { connection?: NetworkInfo }).connection;
-const subscribeLowData = (notify: () => void) => {
-  const c = connection();
-  c?.addEventListener("change", notify);
-  return () => c?.removeEventListener("change", notify);
-};
-const readLowData = () => {
-  const c = connection();
-  return Boolean(c?.saveData) || c?.effectiveType === "slow-2g" || c?.effectiveType === "2g";
-};
-
-const subscribeNever = () => () => {};
-
-const subscribeChoice = (notify: () => void) => {
-  window.addEventListener(CHOICE_EVENT, notify);
-  return () => window.removeEventListener(CHOICE_EVENT, notify);
-};
-const readChoice = (): Choice => {
-  try {
-    const value = sessionStorage.getItem(CHOICE_KEY);
-    return value === "still" || value === "animated" || value === "ack" ? value : null;
-  } catch {
-    return null;
-  }
-};
-const writeChoice = (choice: Choice) => {
-  try {
-    if (choice) sessionStorage.setItem(CHOICE_KEY, choice);
-    else sessionStorage.removeItem(CHOICE_KEY);
-  } catch {
-    /* private mode: the choice just lasts until the next load */
-  }
-  window.dispatchEvent(new Event(CHOICE_EVENT));
-};
-
-const buttonClass =
-  "min-h-12 rounded-lg px-3 py-2 text-base font-semibold transition-all duration-700 ease-fluid active:scale-[0.98]";
-
 export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, motion, cta, email }: Props) {
   const host = useRef<HTMLDivElement>(null);
   // Scene the engine reports as active; the last one shows the "keep scrolling" cue.
   const [active, setActive] = useState(0);
-  const reduced = useSyncExternalStore(subscribeReduced, readReduced, () => false);
-  const choice = useSyncExternalStore(subscribeChoice, readChoice, () => null);
-  const lowData = useSyncExternalStore(subscribeLowData, readLowData, () => false);
-  // False during server render and hydration, true once the real client values above are known. The engine
-  // waits for it, otherwise it would start downloading with the server defaults and then remount.
-  const ready = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const stills = choice === "still" || (lowData && choice !== "animated");
+  const { reduced, choice, ready, stills } = useMotionPrefs();
 
   // The engine builds its own DOM, so the config is the only thing React owns here.
   const config = useMemo(
@@ -94,9 +35,8 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, mot
       hint,
       loadingLabel: loading,
       onSection: setActive,
-      // When scrolling stops between scenes, the camera finishes the trip to the nearest scene in the direction
-      // the visitor was heading, so nobody is left on an empty stretch without copy.
-      stations: true,
+      // Guided stops are off: snapping back when the visitor let go read as the animation "going backwards".
+      stations: false,
       motion: stills ? "still" : "full",
       nav: false,
       atmosphere: false,
@@ -147,12 +87,6 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, mot
     target.focus({ preventScroll: true });
   };
 
-  // Notice states: showing posters (data saver, or chosen) offers the flight back; a reduced motion system
-  // with the flight running offers the posters until the visitor answers. Everyone else sees nothing.
-  const notice = stills
-    ? choice === "still" ? motion.noticeStill : motion.noticeLowData
-    : reduced && choice === null ? motion.noticeAnimated : null;
-
   return (
     <>
       {/* Server rendered copy of the flight, for search engines, link previews and screen readers. */}
@@ -187,43 +121,7 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, mot
 
       {/* Sibling of the host so CSS can hide it once the flight is over (`#vuelo.is-done ~ .sw-flight-ui`). */}
       <div className="sw-flight-ui pointer-events-none fixed inset-x-4 top-24 z-[350] flex flex-col items-end gap-2 sm:inset-x-auto sm:top-auto sm:right-4 sm:bottom-4 sm:w-[28rem]">
-        {notice ? (
-          <div
-            role="region"
-            aria-label={notice}
-            className="border-line bg-surface/90 pointer-events-auto flex w-full flex-col items-start gap-3 rounded-2xl border p-4 backdrop-blur-xl"
-          >
-            <p className="text-muted text-sm">{notice}</p>
-            <div className="flex flex-wrap gap-2">
-              {stills ? (
-                <button
-                  type="button"
-                  onClick={() => writeChoice("animated")}
-                  className={`${buttonClass} bg-violet hover:bg-violet-soft text-white`}
-                >
-                  {motion.toAnimated}
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => writeChoice("still")}
-                    className={`${buttonClass} border-line hover:bg-ink/10 border`}
-                  >
-                    {motion.toStill}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => writeChoice("ack")}
-                    className={`${buttonClass} bg-violet hover:bg-violet-soft text-white`}
-                  >
-                    {motion.dismiss}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        ) : null}
+        <MotionNotice motion={motion} reduced={reduced} choice={choice} stills={stills} />
 
         <button
           type="button"

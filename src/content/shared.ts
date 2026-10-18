@@ -50,3 +50,19 @@ export const sceneAssets = (id: SceneId) => ({
 
 export const connectors = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}.mp4`);
 export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}-m.mp4`);
+
+// Which tour the home page shows:
+//   "chapters": one scene at a time, each step plays a short trip (TikTok style on phones, text + sticky video
+//               on wide screens). Media in v2, built by sw-work/scripts/build_tour.py.
+//   "scrub":    the previous tour, the camera scrubbed by the scroll position. Media in v1, kept as a fallback.
+export const TOUR: "chapters" | "scrub" = "chapters";
+
+const TOUR_MEDIA = "v2"; // same immutable cache rule as MEDIA: a change means a new folder
+
+// d = 16:9 for wide screens, m = native 9:16 for phones. trips[k] goes from chapter k to chapter k + 1.
+export const tourAssets = (o: "d" | "m") => ({
+  start: `/img/${TOUR_MEDIA}/${o}/start.webp`,
+  intro: `/vid/${TOUR_MEDIA}/${o}/intro.mp4`,
+  trips: [1, 2, 3, 4, 5].map((i) => `/vid/${TOUR_MEDIA}/${o}/t${i}.mp4`),
+  rests: scenes.map((s) => `/img/${TOUR_MEDIA}/${o}/rest-${s.id}.webp`),
+});

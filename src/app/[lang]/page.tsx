@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { ScrollWorld } from "@/components/scroll-world/ScrollWorld";
 import { SiteNav } from "@/components/SiteNav";
+import { Tour } from "@/components/tour/Tour";
 import { About } from "@/components/sections/About";
 import { Career } from "@/components/sections/Career";
 import { Cases } from "@/components/sections/Cases";
@@ -9,7 +10,7 @@ import { Footer } from "@/components/sections/Footer";
 import { Stack } from "@/components/sections/Stack";
 import { TaglineReveal } from "@/components/ui/TaglineReveal";
 import { getDictionary } from "@/content/dictionaries";
-import { site } from "@/content/shared";
+import { site, TOUR } from "@/content/shared";
 import { hasLocale } from "@/content/types";
 
 export default async function Page({ params }: PageProps<"/[lang]">) {
@@ -37,17 +38,21 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
           {site.name}, {dict.nav.brandRole}
         </h1>
 
-        <ScrollWorld
-          copy={dict.flight.scenes}
-          hint={dict.flight.hint}
-          skip={dict.flight.skip}
-          summaryLabel={dict.flight.summaryLabel}
-          loading={dict.flight.loading}
-          more={dict.flight.more}
-          motion={dict.flight.motion}
-          cta={dict.flight.finalCta}
-          email={site.email}
-        />
+        {TOUR === "chapters" ? (
+          <Tour flight={dict.flight} email={site.email} />
+        ) : (
+          <ScrollWorld
+            copy={dict.flight.scenes}
+            hint={dict.flight.hint}
+            skip={dict.flight.skip}
+            summaryLabel={dict.flight.summaryLabel}
+            loading={dict.flight.loading}
+            more={dict.flight.more}
+            motion={dict.flight.motion}
+            cta={dict.flight.finalCta}
+            email={site.email}
+          />
+        )}
 
         {/* Sections slide up over the fixed flight layers, so they need an opaque background and a higher stack. */}
         <div id="contenido" tabIndex={-1} className="bg-bg relative z-[200] focus:outline-none">

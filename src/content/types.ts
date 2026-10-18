@@ -39,6 +39,12 @@ export type Dictionary = {
     summaryLabel: string;
     loading: string;
     more: string;
+    swipe: string;
+    swipeLast: string;
+    scrollHint: string;
+    next: string;
+    prev: string;
+    goTo: string;
     motion: {
       noticeAnimated: string;
       noticeStill: string;

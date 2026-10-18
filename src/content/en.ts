@@ -28,6 +28,12 @@ export const en: Dictionary = {
     summaryLabel: "A tour of my work",
     loading: "Loading the tour",
     more: "Keep scrolling: work, stack and experience",
+    swipe: "Swipe up",
+    swipeLast: "Swipe up to see my profile",
+    scrollHint: "Scroll to explore",
+    next: "Next scene",
+    prev: "Previous scene",
+    goTo: "Go to scene",
     motion: {
       noticeAnimated:
         "Your device asks for less motion. The tour only moves when you scroll, but you can view it as still images.",

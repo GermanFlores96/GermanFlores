@@ -28,6 +28,12 @@ export const es: Dictionary = {
     summaryLabel: "Recorrido por mi trabajo",
     loading: "Cargando el recorrido",
     more: "Sigue bajando: casos, stack y trayectoria",
+    swipe: "Desliza hacia arriba",
+    swipeLast: "Desliza para ver mi perfil",
+    scrollHint: "Desplázate para recorrer",
+    next: "Escena siguiente",
+    prev: "Escena anterior",
+    goTo: "Ir a la escena",
     motion: {
       noticeAnimated:
         "Tu dispositivo pide menos movimiento. El recorrido solo avanza cuando haces scroll, pero puedes verlo con imágenes fijas.",
