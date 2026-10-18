@@ -8,7 +8,7 @@ import { ArrowDown } from "@phosphor-icons/react";
 import { mountScrollWorld } from "./engine";
 import { MotionNotice } from "@/components/MotionNotice";
 import { useMotionPrefs } from "@/lib/motion";
-import { connectors, connectorsMobile, sceneAssets, scenes } from "@/content/shared";
+import { BRIDGE_SCROLL, connectors, connectorsMobile, sceneAssets, scenes } from "@/content/shared";
 import type { Dictionary, FlightCopy } from "@/content/types";
 
 type Props = {
@@ -44,7 +44,7 @@ export function ScrollWorld({ enabled = true, copy, hint, skip, summaryLabel, lo
       nav: false,
       atmosphere: false,
       diveScroll: 1.3,
-      connScroll: 1.0,
+      connScroll: BRIDGE_SCROLL,
       sections: scenes.map((scene, i) => ({
         id: scene.id,
         label: copy[i].label,
@@ -52,6 +52,7 @@ export function ScrollWorld({ enabled = true, copy, hint, skip, summaryLabel, lo
         accent: scene.accent,
         scroll: scene.scroll,
         linger: scene.linger,
+        peak: scene.peak,
         eyebrow: copy[i].eyebrow,
         title: copy[i].title,
         body: copy[i].body,

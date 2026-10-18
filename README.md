@@ -33,8 +33,8 @@ npm start        # servir la build (puerto 3000)
 - Con ahorro de datos activado se muestran imágenes fijas y no se descarga vídeo hasta que la persona lo pide.
 - **Recorrido (`TOUR = "chapters"` en `src/content/shared.ts`):**
   - **Móvil (< 1024 px):** capítulos estilo TikTok (`src/components/tour/`, reproductor en `controller.ts`).
-    Mientras se desliza, el viaje de 4,2 s sigue al dedo (ida o vuelta; la vuelta es el mismo viaje invertido); al soltar
-    termina solo o vuelve animado. Deslizar al revés en pleno viaje da la vuelta en el punto espejo. Medios en `public/vid/v4/m`
+    Mientras se desliza, el viaje de 6 s sigue al dedo (ida o vuelta; la vuelta es el mismo viaje invertido); al soltar
+    termina solo o vuelve animado. Deslizar al revés en pleno viaje da la vuelta en el punto espejo. Medios en `public/vid/v5/m`
     (fotograma clave cada 4 para seguir al dedo),
     generados sin créditos con `python -I sw-work/scripts/build_tour.py m` desde los clips aprobados.
   - **Pantallas anchas:** el recorrido de pantalla completa en el que el scroll mueve la cámara (motor

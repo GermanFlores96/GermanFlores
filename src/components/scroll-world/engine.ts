@@ -106,7 +106,8 @@ export function mountScrollWorld(container, config) {
   const SEGMENTS = [];
   SECTIONS.forEach((s, i) => {
     const dive = { kind: 'dive', si: i, clip: s.clip, clipM: s.clipMobile, still: s.still, stillM: s.stillMobile,
-                   accent: s.accent, w: s.scroll || DIVE_W, linger: s.linger || 0 };
+                   accent: s.accent, w: s.scroll || DIVE_W, linger: s.linger || 0,
+                   peak: s.peak != null ? s.peak : 0.5 };   // [web] where a middle scene's copy is strongest (0..1)
     SEGMENTS.push(dive);
     s._seg = dive;
     // A connector is optional: if connectors[i] is falsy, the two dives simply
@@ -206,6 +207,8 @@ export function mountScrollWorld(container, config) {
   // Per-section dwell: monotone remap of scroll→time so the camera settles mid-scene
   // (where the copy peaks) and moves quicker near the seams. L=0 linear, L=1 full
   // mid-scene pause. f(0)=0, f(1)=1 always, so seam frames are untouched.
+  // [web] copy of a middle scene: 0 at both ends of its stretch, 1 at its peak (the centre unless `peak` says otherwise).
+  const peakCurve = (pr, p) => smooth(pr < p ? pr / p : (1 - pr) / (1 - p));
   const lingerEase = (x, L) => { L = clamp(L); const c = x - 0.5; return (1 - L) * x + L * (4 * c * c * c + 0.5); };
   let vh = window.innerHeight, stageX = 0, totalW = 0, activeIndex = -1, ticking = false;
   let curSeg = 0;                       // [web] segment the scroll position is in (drives downloads and the indicator)
@@ -347,7 +350,7 @@ export function mountScrollWorld(container, config) {
       let cop;
       if (i === 0) cop = after ? 0 : smooth(1 - pr / 0.62);            // greets on landing
       else if (i === N - 1) cop = before ? 0 : smooth(pr / 0.4);       // holds CTA at the end
-      else cop = (before || after) ? 0 : smooth(1 - Math.abs(pr - 0.5) / 0.5);
+      else cop = (before || after) ? 0 : peakCurve(pr, seg.peak);   // [web] peak per scene, 0.5 by default
       const c = copies[i];
       c.style.opacity = cop;
       c.style.transform = reduce ? 'none' : `translateY(${(0.5 - pr) * 4}vh)`;
@@ -432,7 +435,7 @@ export function mountScrollWorld(container, config) {
       const seg = s._seg, w = seg.end - seg.start;
       if (i === 0) return 0;                               // the first scene greets at the very top
       if (i === N - 1) return seg.start + w * 0.75;        // last copy and buttons are complete from 40 %
-      return seg.start + w * 0.5;                          // the copy of a middle scene peaks at its centre
+      return seg.start + w * seg.peak;                     // where the copy of a middle scene peaks
     });
   }
 
@@ -446,10 +449,23 @@ export function mountScrollWorld(container, config) {
       let cop;
       if (i === 0) cop = after ? 0 : smooth(1 - pr / 0.62);
       else if (i === N - 1) cop = before ? 0 : smooth(pr / 0.4);
-      else cop = (before || after) ? 0 : smooth(1 - Math.abs(pr - 0.5) / 0.5);
+      else cop = (before || after) ? 0 : peakCurve(pr, seg.peak);   // [web] peak per scene, 0.5 by default
       best = Math.max(best, cop);
     }
     return best;
+  }
+
+  // Seconds of video between two scroll positions (clip length when loaded, else the usual 8 s / 10.5 s).
+  function videoSeconds(a, b) {
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    let secs = 0;
+    for (const s of SEGMENTS) {
+      const overlap = Math.min(hi, s.end) - Math.max(lo, s.start);
+      if (overlap <= 0) continue;
+      const len = (s.video && s.video.duration) || (s.kind === 'conn' ? 10.5 : 8);
+      secs += (overlap / (s.end - s.start)) * len;
+    }
+    return secs;
   }
 
   function cancelGlide() { if (glide) { cancelAnimationFrame(glide.raf); glide = null; } }
@@ -461,7 +477,8 @@ export function mountScrollWorld(container, config) {
     // 'instant' on every frame: the page sets `scroll-behavior: smooth`, which would turn each step into its own animation.
     const go = y => window.scrollTo({ top: y, left: 0, behavior: 'instant' });
     if (reduce) { go(target); lastY = target; return; }
-    const dur = clamp(600 + (dist / vh) * 450, 700, 2200), t0 = performance.now();
+    // As long as the video it crosses played at about 3x: scene to scene takes 5 to 6 s, never a blur.
+    const dur = clamp((videoSeconds(from, target) / 3) * 1000, 900, 6500), t0 = performance.now();
     glide = { raf: 0 };
     const step = now => {
       if (!glide || !alive) return;
