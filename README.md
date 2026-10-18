@@ -31,13 +31,15 @@ npm start        # servir la build (puerto 3000)
   del póster inicial en `globals.css`. Nunca sobrescribas archivos dentro de `v1`.
 - Los teléfonos usan la cadena vertical (`-m.mp4`, 720 de ancho, `-g 4`); el escritorio, 720p 16:9 (`-g 8`).
 - Con ahorro de datos activado se muestran imágenes fijas y no se descarga vídeo hasta que la persona lo pide.
-- **Recorrido actual (`TOUR = "chapters"` en `src/content/shared.ts`):** 6 capítulos que se reproducen, nunca se
-  arrastran. En móvil es estilo TikTok (deslizar = una escena; abajo = fundido, nunca reversa); en pantallas de
-  1024 px o más, texto a la izquierda con scroll normal y vídeo fijo a la derecha. Código en `src/components/tour/`
-  (`controller.ts` es el reproductor). Medios en `public/vid/v2` y `public/img/v2`, generados sin créditos con
-  `python -I sw-work/scripts/build_tour.py` desde los clips aprobados (viajes de 2,6 s con aceleración suave).
-- **Recorrido anterior (`TOUR = "scrub"`):** el scroll arrastra el vídeo (motor `scroll-world`, medios `v1`). Se
-  conserva intacto para poder volver cambiando esa línea.
+- **Recorrido (`TOUR = "chapters"` en `src/content/shared.ts`):**
+  - **Móvil (< 1024 px):** capítulos estilo TikTok (`src/components/tour/`, reproductor en `controller.ts`).
+    Deslizar arriba o abajo reproduce un viaje de 4,2 s de ida o de vuelta (la vuelta es el mismo viaje invertido);
+    si se desliza al revés en pleno viaje, la cámara da la vuelta en el punto espejo. Medios en `public/vid/v3/m`,
+    generados sin créditos con `python -I sw-work/scripts/build_tour.py m` desde los clips aprobados.
+  - **Pantallas anchas:** el recorrido de pantalla completa en el que el scroll mueve la cámara (motor
+    `scroll-world`, medios `v1`), sin paradas guiadas.
+  - `TOUR = "scrub"` usa el recorrido de scroll también en móvil. `v2` (primera versión por capítulos) sigue
+    publicada pero sin uso.
 - **Paradas guiadas (solo modo `scrub`, hoy desactivadas):** si la persona deja de hacer scroll dentro del recorrido, la cámara termina sola el
   trayecto hasta la escena siguiente o anterior (umbral: 15 % del tramo, máximo 0,3 pantallas). El último punto es el
   inicio de las secciones. Rueda, toque, tecla o clic cancelan el trayecto. Opción `stations` del motor.

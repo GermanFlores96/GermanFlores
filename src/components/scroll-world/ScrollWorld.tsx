@@ -12,6 +12,8 @@ import { connectors, connectorsMobile, sceneAssets, scenes } from "@/content/sha
 import type { Dictionary, FlightCopy } from "@/content/types";
 
 type Props = {
+  /** False keeps it inert (rendered but hidden): no engine, no downloads. */
+  enabled?: boolean;
   copy: FlightCopy[];
   hint: string;
   skip: string;
@@ -23,7 +25,7 @@ type Props = {
   email: string;
 };
 
-export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, motion, cta, email }: Props) {
+export function ScrollWorld({ enabled = true, copy, hint, skip, summaryLabel, loading, more, motion, cta, email }: Props) {
   const host = useRef<HTMLDivElement>(null);
   // Scene the engine reports as active; the last one shows the "keep scrolling" cue.
   const [active, setActive] = useState(0);
@@ -71,13 +73,13 @@ export function ScrollWorld({ copy, hint, skip, summaryLabel, loading, more, mot
 
   useEffect(() => {
     const el = host.current;
-    if (!el || !ready) return;
+    if (!el || !ready || !enabled) return;
     const world = mountScrollWorld(el, config);
     // The same copy is in the server rendered summary below, so assistive tech reads it once, in order.
     el.querySelector(".sw-copylayer")?.setAttribute("aria-hidden", "true");
     el.querySelectorAll<HTMLElement>(".sw-copylayer a").forEach((link) => (link.tabIndex = -1));
     return () => world?.destroy();
-  }, [config, ready]);
+  }, [config, ready, enabled]);
 
   // Jump straight past the flight. Instant on purpose: a smooth scroll would scrub (and download) every clip.
   const skipFlight = () => {

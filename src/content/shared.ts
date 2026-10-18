@@ -52,17 +52,21 @@ export const connectors = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}.mp4
 export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${i}-m.mp4`);
 
 // Which tour the home page shows:
-//   "chapters": one scene at a time, each step plays a short trip (TikTok style on phones, text + sticky video
-//               on wide screens). Media in v2, built by sw-work/scripts/build_tour.py.
-//   "scrub":    the previous tour, the camera scrubbed by the scroll position. Media in v1, kept as a fallback.
+//   "chapters": phones (< 1024 px) get one scene at a time, TikTok style: each swipe plays a 4.2 s trip forward or
+//               back. Wide screens keep the full screen scroll tour (it suits the look of the site there).
+//   "scrub":    the scroll tour everywhere, phones included. Kept as a one line fallback.
 export const TOUR: "chapters" | "scrub" = "chapters";
 
-const TOUR_MEDIA = "v2"; // same immutable cache rule as MEDIA: a change means a new folder
+// Phone chapter media (native 9:16), built by sw-work/scripts/build_tour.py. Same immutable cache rule as MEDIA:
+// a change means a new folder. v2 (2.6 s trips, no returns) stays published but unused.
+const TOUR_MEDIA = "v3";
+const base = `/vid/${TOUR_MEDIA}/m`;
 
-// d = 16:9 for wide screens, m = native 9:16 for phones. trips[k] goes from chapter k to chapter k + 1.
-export const tourAssets = (o: "d" | "m") => ({
-  start: `/img/${TOUR_MEDIA}/${o}/start.webp`,
-  intro: `/vid/${TOUR_MEDIA}/${o}/intro.mp4`,
-  trips: [1, 2, 3, 4, 5].map((i) => `/vid/${TOUR_MEDIA}/${o}/t${i}.mp4`),
-  rests: scenes.map((s) => `/img/${TOUR_MEDIA}/${o}/rest-${s.id}.webp`),
-});
+// trips[k]: chapter k -> k + 1; backs[k]: chapter k + 1 -> k (the same frames in reverse).
+export const tourAssets = {
+  start: `/img/${TOUR_MEDIA}/m/start.webp`,
+  intro: `${base}/intro.mp4`,
+  trips: [1, 2, 3, 4, 5].map((i) => `${base}/t${i}.mp4`),
+  backs: [1, 2, 3, 4, 5].map((i) => `${base}/r${i}.mp4`),
+  rests: scenes.map((s) => `/img/${TOUR_MEDIA}/m/rest-${s.id}.webp`),
+};

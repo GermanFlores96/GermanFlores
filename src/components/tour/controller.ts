@@ -1,24 +1,27 @@
-// Chapter tour player. Framework free: the React layouts own the DOM and call next / prev / goTo.
+// Chapter tour player (phones). Framework free: the React layout owns the DOM and calls step / goTo.
 //
-// Each chapter rests on a still image (the exact last frame of its trip). Moving forward plays a short trip video
-// (2 to 3 s, natively, never scrubbed) that starts on the current still and ends on the next one. Moving back, or
-// jumping several chapters, is a quick crossfade between stills: the camera never runs backwards.
+// Each chapter rests on a still image (the exact last frame of its trips). Moving one chapter forward or back plays
+// a short trip video natively (never scrubbed): forward trips run from one rest frame to the next, return trips are
+// the same frames in reverse. If the visitor changes direction mid trip, the other video takes over at the mirrored
+// time, so the camera turns around on the spot. Jumping several chapters at once is a crossfade between stills.
 //
-// Layers, bottom to top: two still images that alternate for crossfades, then the trip video.
+// Layers, bottom to top: two still images that alternate for crossfades, then two trip videos that alternate so
+// one can be loaded and positioned while the other is still showing.
 
 export type TourState = {
-  chapter: number; // chapter at rest (or the one a trip departed from)
+  chapter: number; // chapter at rest, or the one the current trip departed from
   moving: boolean; // a trip is playing
-  target: number; // chapter the current trip goes to (equals chapter when at rest)
+  target: number; // chapter the current trip goes to (equals chapter at rest and during the intro)
   loading: number | null; // trip download progress 0..1, -1 when the size is unknown, null when not waiting
 };
 
 type Options = {
-  video: HTMLVideoElement;
+  videos: [HTMLVideoElement, HTMLVideoElement];
   layers: [HTMLImageElement, HTMLImageElement];
   start: string; // poster shown before the intro plays
   intro: string; // trip into chapter 0
-  trips: string[]; // trips[k] goes from chapter k to chapter k + 1
+  trips: string[]; // trips[k]: chapter k -> k + 1
+  backs: string[]; // backs[k]: chapter k + 1 -> k (trips[k] in reverse)
   rests: string[]; // still for each chapter
   animated: boolean; // false: still images only, no video downloads
   onChange: (state: TourState) => void;
@@ -30,24 +33,32 @@ type Download = {
   listeners: Set<(p: number | null) => void>;
 };
 
+const once = (el: EventTarget, type: string) =>
+  new Promise<void>((resolve) => el.addEventListener(type, () => resolve(), { once: true }));
+
+const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
+
 export class TourController {
   private s: TourState = { chapter: 0, moving: false, target: 0, loading: null };
   private token = 0; // bumped to cancel whatever trip is in flight
-  private pendingNext = false; // one forward step queued while a trip plays
-  private front: 0 | 1;
+  private pending: 0 | 1 | -1 = 0; // one step queued while a trip plays
+  private front: 0 | 1; // visible still layer
+  private cur: 0 | 1 = 0; // visible (or last used) video
   private downloads = new Map<string, Download>();
+  private ready = new Map<string, string>(); // trip url -> object url, once fully downloaded
   private aborts: AbortController[] = [];
   private objectUrls: string[] = [];
   private timers: number[] = [];
   private alive = true;
 
   constructor(private o: Options) {
-    const v = o.video;
-    // Required for inline autoplay on iOS; React does not reliably reflect `muted` as an attribute.
-    v.muted = true;
-    v.playsInline = true;
-    v.setAttribute("muted", "");
-    v.setAttribute("playsinline", "");
+    for (const v of o.videos) {
+      // Required for inline autoplay on iOS; React does not reliably reflect `muted` as an attribute.
+      v.muted = true;
+      v.playsInline = true;
+      v.setAttribute("muted", "");
+      v.setAttribute("playsinline", "");
+    }
     this.front = o.layers[1].classList.contains("is-on") ? 1 : 0;
   }
 
@@ -71,35 +82,41 @@ export class TourController {
       return;
     }
     await this.show(this.o.start, false);
-    void this.play(this.o.intro, 0);
-    this.later(() => this.fetchTrip(0), 1200);
+    void this.play(this.o.intro, 0, 0);
+    this.later(() => this.prefetch(this.o.trips[0]), 1500);
   }
 
-  /** Forward one chapter. Returns false on the last chapter, so the caller can leave the tour. */
-  next(): boolean {
-    if (this.s.moving) {
-      if (this.s.target < this.last) this.pendingNext = true;
+  /** One chapter forward (1) or back (-1). Returns false only for forward on the last chapter. */
+  step(dir: 1 | -1): boolean {
+    const { chapter, moving, target } = this.s;
+    if (moving) {
+      const heading = sign(target - chapter);
+      if (heading === 0) {
+        // intro: a forward step is queued for when it lands, a back step has nowhere to go
+        if (dir > 0) this.pending = 1;
+      } else if (dir === heading) {
+        if ((dir > 0 && target < this.last) || (dir < 0 && target > 0)) this.pending = dir;
+      } else this.turnAround();
       return true;
     }
-    const k = this.s.chapter;
-    if (k >= this.last) return false;
-    if (!this.o.animated) this.jump(k + 1);
-    else void this.play(this.o.trips[k], k + 1);
+    if (dir > 0 && chapter >= this.last) return false;
+    if (dir < 0 && chapter <= 0) return true;
+    if (!this.o.animated) this.jump(chapter + dir);
+    else void this.play(dir > 0 ? this.o.trips[chapter] : this.o.backs[chapter - 1], chapter + dir, 0);
     return true;
   }
 
-  /** Back one chapter: during a trip it cancels and stays where it was; at rest it crossfades. */
-  prev() {
-    if (this.s.moving) return this.cancel();
-    if (this.s.chapter > 0) this.jump(this.s.chapter - 1);
-  }
-
-  /** Go to a chapter: the next one plays its trip, anything else crossfades. */
+  /** Go to a chapter: a neighbour is a trip, anything further a crossfade. */
   goTo(i: number) {
-    const base = this.s.moving ? this.s.target : this.s.chapter;
+    const { chapter, moving, target } = this.s;
+    const base = moving ? target : chapter;
     if (i === base) return;
-    if (i === base + 1 && this.o.animated) {
-      this.next();
+    if (Math.abs(i - base) === 1 && this.o.animated) {
+      if (!moving) return void this.step(sign(i - base) as 1 | -1);
+      const heading = sign(target - chapter);
+      if (heading !== 0 && sign(i - base) === heading) this.pending = heading as 1 | -1;
+      else if (i === chapter) this.turnAround();
+      else this.jump(i);
       return;
     }
     this.jump(i);
@@ -110,21 +127,22 @@ export class TourController {
     this.token++;
     this.timers.forEach((t) => window.clearTimeout(t));
     this.aborts.forEach((a) => a.abort());
-    const v = this.o.video;
-    v.pause();
-    v.removeAttribute("src");
-    v.load();
+    for (const v of this.o.videos) {
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    }
     this.objectUrls.forEach((u) => URL.revokeObjectURL(u));
   }
 
   // ---- trips ----
 
-  private async play(url: string, target: number) {
+  private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
     this.set({ moving: true, target });
     let src: string;
     try {
-      src = await this.fetchVideo(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
+      src = await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
     } catch {
       if (my === this.token) await this.arrive(target, my, true); // network failed: crossfade instead
       return;
@@ -132,60 +150,99 @@ export class TourController {
     if (my !== this.token || !this.alive) return;
     this.set({ loading: null });
 
-    const v = this.o.video;
-    if (v.getAttribute("src") !== src) v.src = src;
-    try {
-      v.currentTime = 0;
-    } catch {
-      /* not seekable yet: it starts at 0 anyway */
+    // Prepare the hidden video (source, position), then swap it in on its first painted frame.
+    const nextIdx = this.cur === 0 ? 1 : 0;
+    const v = this.o.videos[nextIdx];
+    const old = this.o.videos[this.cur];
+    if (v.getAttribute("src") !== src) {
+      v.src = src;
+      await once(v, "loadedmetadata");
+    } else if (v.readyState < 1) await once(v, "loadedmetadata");
+    if (my !== this.token) return;
+    if (Math.abs(v.currentTime - startAt) > 0.01) {
+      v.currentTime = startAt;
+      await once(v, "seeked");
+      if (my !== this.token) return;
     }
-    // Hidden until it really plays; its first frame is the still underneath, so showing it is invisible.
-    v.addEventListener("playing", () => my === this.token && v.classList.add("is-on"), { once: true });
-    const ended = new Promise<void>((resolve) => v.addEventListener("ended", () => resolve(), { once: true }));
+
+    const painted = new Promise<void>((resolve) => {
+      if ("requestVideoFrameCallback" in v) v.requestVideoFrameCallback(() => resolve());
+      else window.setTimeout(resolve, 60);
+    });
+    const ended = once(v, "ended");
     try {
       await v.play();
     } catch {
       if (my === this.token) await this.arrive(target, my, true);
       return;
     }
+    await painted;
+    if (my !== this.token) {
+      v.pause();
+      return;
+    }
+    // Same picture on both sides of the swap: the still under a fresh trip, or the other video when turning around.
+    v.style.zIndex = "4";
+    old.style.zIndex = "3";
+    v.style.transition = "none";
+    v.classList.add("is-on");
+    old.classList.remove("is-on");
+    old.pause();
+    this.cur = nextIdx;
+
     await ended;
     if (my === this.token) await this.arrive(target, my, false);
+  }
+
+  /** Change direction mid trip: the opposite video continues from the mirrored time. */
+  private turnAround() {
+    const { chapter: from, target: to } = this.s;
+    const heading = sign(to - from);
+    const opposite = heading > 0 ? this.o.backs[from] : this.o.trips[to];
+    const src = opposite && this.ready.get(opposite);
+    const v = this.o.videos[this.cur];
+    if (!src || !Number.isFinite(v.duration)) return this.cancel(); // not downloaded yet: go back with a fade
+    const at = Math.max(0, v.duration - v.currentTime);
+    this.pending = 0;
+    this.set({ chapter: to }); // the trip now departs from where it was heading
+    void this.play(opposite, from, at);
   }
 
   private async arrive(target: number, my: number, fade: boolean) {
     // The video stays on top showing its last frame while the identical still is put underneath.
     await this.show(this.o.rests[target], fade);
     if (my !== this.token) return;
-    this.o.video.classList.remove("is-on");
+    this.hideVideos(false);
     this.set({ chapter: target, moving: false, target, loading: null });
-    this.preloadStills(target);
-    this.fetchTrip(target);
-    this.later(() => this.fetchTrip(target + 1), 1500);
-    if (this.pendingNext) {
-      this.pendingNext = false;
-      this.next();
-    }
+    this.prefetchAround(target);
+    const queued = this.pending;
+    this.pending = 0;
+    if (queued) this.step(queued);
   }
 
   private jump(i: number) {
     this.token++;
-    this.pendingNext = false;
-    this.o.video.pause();
-    this.o.video.classList.remove("is-on");
+    this.pending = 0;
     this.set({ chapter: i, moving: false, target: i, loading: null });
-    void this.show(this.o.rests[i], true);
-    this.preloadStills(i);
-    this.fetchTrip(i);
+    void this.show(this.o.rests[i], true).then(() => this.hideVideos(true));
+    this.prefetchAround(i);
   }
 
   private cancel() {
     // The intro has no still of origin underneath (only the poster), so cancelling it lands on chapter 0.
     if (this.s.target === this.s.chapter) return this.jump(this.s.chapter);
     this.token++;
-    this.pendingNext = false;
-    this.o.video.pause();
-    this.o.video.classList.remove("is-on"); // the still of the chapter of origin is still underneath
+    this.pending = 0;
+    this.hideVideos(true); // the still of the chapter of origin is still underneath
     this.set({ moving: false, target: this.s.chapter, loading: null });
+  }
+
+  private hideVideos(fade: boolean) {
+    for (const v of this.o.videos) {
+      v.pause();
+      v.style.transition = fade ? "opacity 250ms ease-out" : "none";
+      v.classList.remove("is-on");
+    }
   }
 
   // ---- stills ----
@@ -220,13 +277,21 @@ export class TourController {
 
   // ---- downloads ----
 
-  private fetchTrip(k: number) {
-    if (!this.o.animated || k < 0 || k >= this.o.trips.length) return;
-    this.fetchVideo(this.o.trips[k]).catch(() => {});
+  private prefetchAround(k: number) {
+    this.preloadStills(k);
+    if (!this.o.animated) return;
+    this.prefetch(this.o.trips[k]); // next
+    this.prefetch(this.o.backs[k - 1]); // previous
+    this.later(() => this.prefetch(this.o.trips[k + 1]), 1500); // the one after, in case of a queued step
+  }
+
+  /** Background download; past either end of the tour there is simply nothing to fetch. */
+  private prefetch(url: string | undefined) {
+    if (url) this.fetch(url).catch(() => {});
   }
 
   // Whole file as a blob: plays instantly once here and never stalls halfway on a slow connection.
-  private fetchVideo(url: string, onProgress?: (p: number | null) => void): Promise<string> {
+  private fetch(url: string, onProgress?: (p: number | null) => void): Promise<string> {
     let d = this.downloads.get(url);
     if (!d) {
       const ctrl = new AbortController();
@@ -255,6 +320,7 @@ export class TourController {
         }
         const objectUrl = URL.createObjectURL(blob);
         this.objectUrls.push(objectUrl);
+        this.ready.set(url, objectUrl);
         return objectUrl;
       })();
       entry.promise.catch(() => this.downloads.delete(url)); // a later request retries

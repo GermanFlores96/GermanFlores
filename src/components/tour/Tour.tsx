@@ -1,14 +1,15 @@
 "use client";
 
-import { TourDesktop } from "./TourDesktop";
 import { TourMobile } from "./TourMobile";
+import { ScrollWorld } from "@/components/scroll-world/ScrollWorld";
 import { useMedia, useMotionPrefs } from "@/lib/motion";
 import type { Dictionary } from "@/content/types";
 
 type Props = { flight: Dictionary["flight"]; email: string };
 
-// Both layouts are server rendered (real text for search engines and no flash on load); CSS shows one of them and
-// only the visible one starts its player, so a page never downloads both sets of videos.
+// Phones get the chapter tour (TikTok style); wide screens keep the full screen scroll tour, which suits the look of
+// the site there. Both are server rendered and CSS shows one of them; only the visible one starts, so a page never
+// downloads both sets of videos.
 export function Tour({ flight, email }: Props) {
   const prefs = useMotionPrefs();
   const wide = useMedia("(min-width: 1024px)");
@@ -19,7 +20,18 @@ export function Tour({ flight, email }: Props) {
         <TourMobile active={prefs.ready && !wide} prefs={prefs} flight={flight} email={email} />
       </div>
       <div className="hidden lg:block">
-        <TourDesktop active={prefs.ready && wide} prefs={prefs} flight={flight} email={email} />
+        <ScrollWorld
+          enabled={wide}
+          copy={flight.scenes}
+          hint={flight.hint}
+          skip={flight.skip}
+          summaryLabel={flight.summaryLabel}
+          loading={flight.loading}
+          more={flight.more}
+          motion={flight.motion}
+          cta={flight.finalCta}
+          email={email}
+        />
       </div>
     </section>
   );

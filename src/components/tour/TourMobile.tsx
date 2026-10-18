@@ -16,15 +16,17 @@ type Props = {
   email: string;
 };
 
-const assets = tourAssets("m");
+const assets = tourAssets;
 const LAST = scenes.length - 1;
 const initial: TourState = { chapter: 0, moving: false, target: 0, loading: null };
 
-// Phones: one full screen, TikTok style. Swipe up = next chapter (plays a short trip), swipe down = previous
-// (crossfade). On the last chapter, swiping up leaves the tour for the profile sections, which scroll normally.
+// Phones: one full screen, TikTok style. Swipe up = next chapter, swipe down = previous; both play a trip (the return
+// trip is the forward one in reverse) and a swipe the other way mid trip turns the camera around on the spot.
+// On the last chapter, swiping up leaves the tour for the profile sections, which scroll normally.
 export function TourMobile({ active, prefs, flight, email }: Props) {
   const stage = useRef<HTMLDivElement>(null);
-  const video = useRef<HTMLVideoElement>(null);
+  const videoA = useRef<HTMLVideoElement>(null);
+  const videoB = useRef<HTMLVideoElement>(null);
   const layerA = useRef<HTMLImageElement>(null);
   const layerB = useRef<HTMLImageElement>(null);
   const ctrl = useRef<TourController | null>(null);
@@ -33,9 +35,9 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
   const animated = !prefs.stills;
 
   useEffect(() => {
-    if (!active || !video.current || !layerA.current || !layerB.current) return;
+    if (!active || !videoA.current || !videoB.current || !layerA.current || !layerB.current) return;
     const c = new TourController({
-      video: video.current,
+      videos: [videoA.current, videoB.current],
       layers: [layerA.current, layerB.current],
       ...assets,
       animated,
@@ -70,9 +72,7 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
         else window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
-      if (dir > 0) {
-        if (!c.next()) leave();
-      } else c.prev();
+      if (!c.step(dir)) leave();
     };
 
     let y0 = 0;
@@ -143,7 +143,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       <img ref={layerA} src={assets.start} alt="" className="tour-layer is-on" style={{ zIndex: 2 }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img ref={layerB} alt="" className="tour-layer" />
-      <video ref={video} className="tour-video" muted playsInline preload="none" aria-hidden />
+      <video ref={videoA} className="tour-video" muted playsInline preload="none" aria-hidden />
+      <video ref={videoB} className="tour-video" muted playsInline preload="none" aria-hidden />
 
       {/* Legibility backing for the copy at the bottom. */}
       <div className="from-bg via-bg/80 pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-3/4 bg-linear-to-t to-transparent" />
