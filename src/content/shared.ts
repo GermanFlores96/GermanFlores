@@ -58,8 +58,9 @@ export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${
 export const TOUR: "chapters" | "scrub" = "chapters";
 
 // Phone chapter media (native 9:16), built by sw-work/scripts/build_tour.py. Same immutable cache rule as MEDIA:
-// a change means a new folder. v2 (2.6 s trips, no returns) stays published but unused.
-const TOUR_MEDIA = "v3";
+// a change means a new folder. v4 = 4.2 s trips with returns and a keyframe every 4 frames (they follow the finger).
+// v2 and v3 stay published but unused.
+const TOUR_MEDIA = "v4";
 const base = `/vid/${TOUR_MEDIA}/m`;
 
 // trips[k]: chapter k -> k + 1; backs[k]: chapter k + 1 -> k (the same frames in reverse).

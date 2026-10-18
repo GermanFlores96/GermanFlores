@@ -5,6 +5,9 @@
 // the same frames in reverse. If the visitor changes direction mid trip, the other video takes over at the mirrored
 // time, so the camera turns around on the spot. Jumping several chapters at once is a crossfade between stills.
 //
+// While the finger is down (drag*), the trip follows it frame by frame; on release it either finishes playing on its
+// own to the next chapter, or turns around and plays back to where it started.
+//
 // Layers, bottom to top: two still images that alternate for crossfades, then two trip videos that alternate so
 // one can be loaded and positioned while the other is still showing.
 
@@ -25,6 +28,16 @@ type Options = {
   rests: string[]; // still for each chapter
   animated: boolean; // false: still images only, no video downloads
   onChange: (state: TourState) => void;
+};
+
+type Drag = {
+  my: number; // token of the drag session
+  target: number;
+  v: HTMLVideoElement;
+  progress: number; // 0..1 along the trip
+  prepared: boolean; // the trip video is on screen and seekable
+  released: null | "finish" | "back";
+  reseek: boolean; // a newer position arrived while the decoder was still seeking
 };
 
 type Download = {
@@ -50,6 +63,7 @@ export class TourController {
   private objectUrls: string[] = [];
   private timers: number[] = [];
   private alive = true;
+  private drag: Drag | null = null;
 
   constructor(private o: Options) {
     for (const v of o.videos) {
@@ -120,6 +134,117 @@ export class TourController {
       return;
     }
     this.jump(i);
+  }
+
+  // ---- dragging: the trip follows the finger ----
+
+  /**
+   * Start following the finger towards the next (1) or previous (-1) chapter. Returns false when that is not
+   * possible right now (a trip is playing, the edge of the tour, still images, or the trip is not downloaded yet):
+   * the caller then treats the gesture as a plain swipe on release.
+   */
+  dragBegin(dir: 1 | -1): boolean {
+    const c = this.s.chapter;
+    if (this.s.moving || !this.o.animated) return false;
+    if ((dir > 0 && c >= this.last) || (dir < 0 && c <= 0)) return false;
+    const url = dir > 0 ? this.o.trips[c] : this.o.backs[c - 1];
+    const src = this.ready.get(url);
+    if (!src) {
+      this.prefetch(url);
+      return false;
+    }
+    const my = ++this.token;
+    this.pending = 0;
+    const nextIdx = this.cur === 0 ? 1 : 0;
+    const d: Drag = {
+      my, target: c + dir, v: this.o.videos[nextIdx], progress: 0, prepared: false, released: null, reseek: false,
+    };
+    this.drag = d;
+    this.set({ moving: true, target: c + dir });
+    void (async () => {
+      const v = d.v;
+      if (v.getAttribute("src") !== src) {
+        v.src = src;
+        await once(v, "loadedmetadata");
+      } else if (v.readyState < 1) await once(v, "loadedmetadata");
+      if (Math.abs(v.currentTime) > 0.01) {
+        v.currentTime = 0;
+        await once(v, "seeked");
+      }
+      if (my !== this.token) return;
+      // Frame 0 is the still underneath: swapping the video in is invisible.
+      const old = this.o.videos[this.cur];
+      v.style.zIndex = "4";
+      old.style.zIndex = "3";
+      v.style.transition = "none";
+      v.classList.add("is-on");
+      old.classList.remove("is-on");
+      old.pause();
+      this.cur = nextIdx;
+      d.prepared = true;
+      if (d.released) this.release(d);
+      else this.seekDrag(d);
+    })();
+    return true;
+  }
+
+  /** Finger position along the trip, 0..1. */
+  dragTo(progress: number) {
+    const d = this.drag;
+    if (!d || d.released) return;
+    d.progress = Math.min(1, Math.max(0, progress));
+    this.seekDrag(d);
+  }
+
+  /** Finger lifted: finish the trip on its own, or go back to where it started. */
+  dragEnd(finish: boolean) {
+    const d = this.drag;
+    if (!d || d.released) return;
+    d.released = finish ? "finish" : "back";
+    if (d.prepared) this.release(d);
+  }
+
+  private seekDrag(d: Drag) {
+    if (!d.prepared || d.released || d.my !== this.token) return;
+    const v = d.v;
+    // Never queue a seek while the decoder is still on the previous one: catch up with the latest position after.
+    if (v.seeking) {
+      d.reseek = true;
+      return;
+    }
+    const t = d.progress * v.duration * 0.999;
+    if (Math.abs(v.currentTime - t) < 1 / 48) return;
+    v.currentTime = t;
+    v.addEventListener(
+      "seeked",
+      () => {
+        if (d.reseek && this.drag === d) {
+          d.reseek = false;
+          this.seekDrag(d);
+        }
+      },
+      { once: true },
+    );
+  }
+
+  private async release(d: Drag) {
+    this.drag = null;
+    if (d.my !== this.token) return;
+    const v = d.v;
+    if (d.released === "back") {
+      if (d.progress < 0.02) return this.cancel(); // barely moved: the still of origin is right there
+      return this.turnAround(); // the mirrored trip plays back from this exact frame
+    }
+    if (d.progress > 0.995) return void this.arrive(d.target, d.my, false);
+    const ended = once(v, "ended");
+    try {
+      await v.play();
+    } catch {
+      if (d.my === this.token) await this.arrive(d.target, d.my, true);
+      return;
+    }
+    await ended;
+    if (d.my === this.token) await this.arrive(d.target, d.my, false);
   }
 
   destroy() {
@@ -282,7 +407,13 @@ export class TourController {
     if (!this.o.animated) return;
     this.prefetch(this.o.trips[k]); // next
     this.prefetch(this.o.backs[k - 1]); // previous
-    this.later(() => this.prefetch(this.o.trips[k + 1]), 1500); // the one after, in case of a queued step
+    // The mirrors of those two, needed when a drag is released short of halfway and plays back, and the trip after
+    // next, in case of a queued step.
+    this.later(() => {
+      this.prefetch(this.o.backs[k]);
+      this.prefetch(this.o.trips[k - 1]);
+      this.prefetch(this.o.trips[k + 1]);
+    }, 1500);
   }
 
   /** Background download; past either end of the tour there is simply nothing to fetch. */

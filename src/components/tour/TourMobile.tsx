@@ -20,8 +20,9 @@ const assets = tourAssets;
 const LAST = scenes.length - 1;
 const initial: TourState = { chapter: 0, moving: false, target: 0, loading: null };
 
-// Phones: one full screen, TikTok style. Swipe up = next chapter, swipe down = previous; both play a trip (the return
-// trip is the forward one in reverse) and a swipe the other way mid trip turns the camera around on the spot.
+// Phones: one full screen, TikTok style. Dragging up or down moves the camera with the finger towards the next or
+// previous chapter; letting go finishes the trip on its own (or plays back if it was a short drag). A swipe the other
+// way while a trip plays turns the camera around on the spot.
 // On the last chapter, swiping up leaves the tour for the profile sections, which scroll normally.
 export function TourMobile({ active, prefs, flight, email }: Props) {
   const stage = useRef<HTMLDivElement>(null);
@@ -75,15 +76,52 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       if (!c.step(dir)) leave();
     };
 
+    // Touch: once the finger has clearly moved, the trip follows it (a full trip = 70 % of the screen height).
+    // On release it finishes on its own if it went a quarter of the way or the flick was fast enough in that
+    // direction; otherwise it plays back to the scene it left. When following is not possible (a trip already
+    // playing, the edge of the tour, still images, video not downloaded yet), the gesture is a plain swipe.
     let y0 = 0;
     let t0 = 0;
+    let dir: 0 | 1 | -1 = 0;
+    let dragging = false;
+    let lastY = 0;
+    let lastT = 0;
+    let velocity = 0; // px/ms, positive = finger moving up
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
-      y0 = e.touches[0].clientY;
-      t0 = performance.now();
+      y0 = lastY = e.touches[0].clientY;
+      t0 = lastT = performance.now();
+      dir = 0;
+      dragging = false;
+      velocity = 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const c = ctrl.current;
+      if (!c || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      const now = performance.now();
+      if (now > lastT) velocity = 0.7 * velocity + 0.3 * ((lastY - y) / (now - lastT));
+      lastY = y;
+      lastT = now;
+      const dy = y0 - y;
+      if (!dir && Math.abs(dy) > 10) {
+        dir = dy > 0 ? 1 : -1;
+        if (window.scrollY <= 4) {
+          dragging = c.dragBegin(dir);
+          if (dragging) setSwiped(true);
+        }
+      }
+      if (dragging) c.dragTo((dir * dy - 10) / (window.innerHeight * 0.7));
     };
     const onTouchEnd = (e: TouchEvent) => {
+      const c = ctrl.current;
       const dy = y0 - (e.changedTouches[0]?.clientY ?? y0);
+      if (dragging && c) {
+        dragging = false;
+        const progress = (dir * dy - 10) / (window.innerHeight * 0.7);
+        c.dragEnd(progress > 0.25 || dir * velocity > 0.35);
+        return;
+      }
       const fast = Math.abs(dy) / Math.max(1, performance.now() - t0) > 0.4; // a flick counts even if short
       if (Math.abs(dy) < 40 && !(fast && Math.abs(dy) > 16)) return;
       step(dy > 0 ? 1 : -1);
@@ -118,12 +156,16 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     };
 
     el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
       el.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
     };
