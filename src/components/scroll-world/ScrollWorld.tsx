@@ -37,8 +37,9 @@ export function ScrollWorld({ enabled = true, copy, hint, skip, summaryLabel, lo
       hint,
       loadingLabel: loading,
       onSection: setActive,
-      // Guided stops are off: snapping back when the visitor let go read as the animation "going backwards".
-      stations: false,
+      // Stopping on an empty stretch finishes the trip in the direction of the scroll, never against it (snapping
+      // back after a small scroll read as the animation "going backwards").
+      finishTrips: true,
       motion: stills ? "still" : "full",
       nav: false,
       atmosphere: false,

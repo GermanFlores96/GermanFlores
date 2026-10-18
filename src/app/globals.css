@@ -70,8 +70,47 @@ dd {
 .sw-root.is-done > .sw-copylayer,
 .sw-root.is-done > .sw-route,
 .sw-root.is-done > .sw-hint,
-.sw-root.is-done > .sw-scrollbar {
+.sw-root.is-done > .sw-scrollbar,
+.sw-root.is-done > .sw-toward {
   visibility: hidden;
+}
+
+/* Bridge label: the scenes on either side of the stretch being crossed. */
+.sw-toward {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-line);
+  background: rgb(15 20 40 / 0.7);
+  backdrop-filter: blur(16px);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  transition:
+    opacity 500ms var(--ease-fluid),
+    transform 500ms var(--ease-fluid);
+}
+
+.sw-toward.is-on {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.sw-toward i {
+  width: 1px;
+  height: 12px;
+  background: var(--color-line);
 }
 
 /* Wider than the engine default so long titles take three lines, not four, and the tags stay in view. */

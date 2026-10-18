@@ -6,8 +6,9 @@
         so the fixed layers stop rendering (see globals.css).
      3. Resources (listeners, rAF, blob URLs, DOM, downloads) are tracked so destroy() leaves nothing behind.
      4. Clip downloads go through a priority queue with progress and a loading indicator (pump/startDownload).
-     5. Guided stops (`config.stations`): when scrolling stops inside the flight, the camera finishes the
-        trip to the next or previous station on its own. `config.onSection(i)` reports the active scene. */
+     5. Finishing trips (`config.finishTrips`): when scrolling stops on an empty stretch, the camera finishes the
+        trip in the direction of the scroll (never against it). A label names the scenes on either side of a
+        bridge. `config.onSection(i)` reports the active scene. */
 /* ============================================================================
    scroll-world — portable scroll-scrubbed camera-flight engine
    ----------------------------------------------------------------------------
@@ -158,7 +159,11 @@ export function mountScrollWorld(container, config) {
   loading.innerHTML = '<span class="sw-loading__text"></span><i class="sw-loading__bar"><b></b></i>';
   const loadingText = loading.firstChild, loadingBar = loading.lastChild.firstChild;
 
-  [sky, scrollbar, topbar, stage, copylayer, route, hint, loading, track].forEach(n => container.appendChild(n));
+  // [web] while crossing a bridge: the scenes on either side, so an empty stretch still says where it leads.
+  const toward = el('div', 'sw-toward');
+  toward.setAttribute('aria-hidden', 'true');
+
+  [sky, scrollbar, topbar, stage, copylayer, route, hint, loading, toward, track].forEach(n => container.appendChild(n));
 
   // segment scenes
   SEGMENTS.forEach((s, idx) => {
@@ -360,6 +365,13 @@ export function mountScrollWorld(container, config) {
       if (config.onSection) config.onSection(near);   // [web]
     }
     pump(); updateLoading();                          // [web] download queue + indicator follow the scroll
+    // [web] bridge label
+    const bridge = cur.kind === 'conn' && !reduce ? cur : null;
+    toward.classList.toggle('is-on', !!bridge);
+    if (bridge && toward.dataset.si !== String(bridge.si)) {
+      toward.dataset.si = String(bridge.si);
+      toward.innerHTML = `<span>↑ ${esc(SECTIONS[bridge.si].label || '')}</span><i></i><span>${esc(SECTIONS[bridge.si + 1].label || '')} ↓</span>`;
+    }
     scrollbarFill.style.transform = `scaleX(${clamp(y / (totalW * vh))})`;
     // [web] sections now cover the flight: the track ends at (totalW + 1) vh, where #contenido starts.
     container.classList.toggle('is-done', y >= (totalW + 1) * vh - 2);
@@ -404,24 +416,40 @@ export function mountScrollWorld(container, config) {
   on(window, 'pointerdown', onFirstGesture, { once: true, passive: true });
   on(window, 'touchstart', onFirstGesture, { once: true, passive: true });
 
-  // [web] ---- guided stops ---------------------------------------------------------------------------
-  // The copy of each scene is only fully visible near one scroll position (its "station"), so stopping in a
-  // bridge or at the edge of a scene left an empty screen. When the visitor stops scrolling inside the
-  // flight, the camera finishes the trip on its own to the station in the direction they were heading.
-  // The last station is the start of the page sections, so a nudge past the final scene lands on the profile.
-  // Scrolling stays free in between; any wheel, touch, key or click cancels the glide at once.
-  const STATIONS_ON = config.stations === true;
-  let stations = [], glide = null, restY = window.scrollY, dir = 0, touching = false, settleTimer = 0;
+  // [web] ---- finishing trips (`config.finishTrips`) --------------------------------------------------
+  // Stopping on an empty stretch (a bridge between scenes, or the edge of a scene whose copy has faded) left a
+  // screen without text. When the visitor stops scrolling there, the camera finishes the trip on its own in the
+  // direction they were scrolling: to the next scene going down, to the previous one going up. It never goes
+  // against that direction, however small the scroll was: snapping back after a 5 % scroll (the earlier guided
+  // stops) felt like the animation going backwards. Stopping on a scene with its copy visible changes nothing,
+  // and any wheel, touch, key or click cancels the glide at once.
+  const FINISH_ON = config.finishTrips === true;
+  let stations = [], glide = null, dir = 0, lastY = window.scrollY, touching = false, settleTimer = 0;
 
   function computeStations() {
-    if (!STATIONS_ON) return;
+    if (!FINISH_ON) return;
     stations = SECTIONS.map((s, i) => {
       const seg = s._seg, w = seg.end - seg.start;
       if (i === 0) return 0;                               // the first scene greets at the very top
       if (i === N - 1) return seg.start + w * 0.75;        // last copy and buttons are complete from 40 %
       return seg.start + w * 0.5;                          // the copy of a middle scene peaks at its centre
     });
-    stations.push((totalW + 1) * vh);                      // where #contenido starts
+  }
+
+  // Strongest copy opacity at a scroll position (same curves as read()).
+  function copyAt(y) {
+    let best = 0;
+    for (let i = 0; i < N; i++) {
+      const seg = SECTIONS[i]._seg;
+      const pr = clamp((y - seg.start) / (seg.end - seg.start), 0, 1);
+      const before = y < seg.start, after = y > seg.end;
+      let cop;
+      if (i === 0) cop = after ? 0 : smooth(1 - pr / 0.62);
+      else if (i === N - 1) cop = before ? 0 : smooth(pr / 0.4);
+      else cop = (before || after) ? 0 : smooth(1 - Math.abs(pr - 0.5) / 0.5);
+      best = Math.max(best, cop);
+    }
+    return best;
   }
 
   function cancelGlide() { if (glide) { cancelAnimationFrame(glide.raf); glide = null; } }
@@ -432,44 +460,36 @@ export function mountScrollWorld(container, config) {
     if (dist < 2) return;
     // 'instant' on every frame: the page sets `scroll-behavior: smooth`, which would turn each step into its own animation.
     const go = y => window.scrollTo({ top: y, left: 0, behavior: 'instant' });
-    if (reduce) { go(target); restY = target; return; }
+    if (reduce) { go(target); lastY = target; return; }
     const dur = clamp(600 + (dist / vh) * 450, 700, 2200), t0 = performance.now();
     glide = { raf: 0 };
     const step = now => {
       if (!glide || !alive) return;
       const k = clamp((now - t0) / dur);
       go(from + (target - from) * (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2));
-      if (k < 1) glide.raf = requestAnimationFrame(step); else { glide = null; restY = target; }
+      if (k < 1) glide.raf = requestAnimationFrame(step); else { glide = null; lastY = target; dir = 0; }
     };
     glide.raf = requestAnimationFrame(step);
   }
 
   function scheduleSettle() {
-    if (!STATIONS_ON || glide) return;
-    dir = Math.sign(window.scrollY - restY) || dir;
+    const y = window.scrollY;
+    if (!glide && y !== lastY) dir = y > lastY ? 1 : -1;   // the latest movement sets the direction
+    lastY = y;
+    if (!FINISH_ON || glide) return;
     clearTimeout(settleTimer);
     if (!touching) settleTimer = setTimeout(settle, 220);
   }
 
   function settle() {
-    if (!alive || glide || touching || !stations.length) return;
-    const y = window.scrollY, last = stations.length - 1, heading = dir;
-    dir = 0;
-    if (y >= stations[last] - 2) { restY = y; return; }    // already in the page sections: leave it alone
-    let i = 0;
-    while (i < last - 1 && y >= stations[i + 1]) i++;      // stations[i] <= y < stations[i + 1]
-    const a = stations[i], b = stations[i + 1], f = (y - a) / (b - a);
-    // A short push is enough to go on: 15 % of the way, but never more than 0.3 screens, because the
-    // scenes are 2 to 3 screens apart and 15 % of that is more than a thumb flick on a phone.
-    const need = Math.min(0.15 * (b - a), 0.3 * vh);
-    let target;
-    if (f < 0.02) target = a;
-    else if (f > 0.98) target = b;
-    else if (heading > 0) target = y - a > need ? b : a;   // heading down
-    else if (heading < 0) target = b - y > need ? a : b;   // heading up, towards the previous one
-    else target = f < 0.5 ? a : b;
-    restY = target;
-    if (Math.abs(target - y) > 2) glideTo(target);
+    if (!alive || glide || touching || !stations.length || !dir) return;
+    const y = window.scrollY, heading = dir;
+    if (y < 2 || y > stations[N - 1] + 2) return;          // top, or past the last scene: its copy holds, sections follow
+    if (copyAt(y) >= 0.35) return;                         // on a scene with its copy: leave it alone
+    const target = heading > 0
+      ? stations.find(s => s > y + 2)                      // going down: the next scene
+      : [...stations].reverse().find(s => s < y - 2);      // going up: the previous one
+    if (target != null) glideTo(target);
   }
 
   on(window, 'wheel', cancelGlide, { passive: true });
