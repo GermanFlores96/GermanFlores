@@ -233,7 +233,11 @@ export class TourController {
     const v = d.v;
     if (d.released === "back") {
       if (d.progress < 0.02) return this.cancel(); // barely moved: the still of origin is right there
-      return this.turnAround(); // the mirrored trip plays back from this exact frame
+      // A long way back plays the mirrored trip from this exact frame, when it is downloaded; anything else springs
+      // back by seeking the same video, which needs no extra download.
+      const mirror = d.target > this.s.chapter ? this.o.backs[this.s.chapter] : this.o.trips[d.target];
+      if (d.progress > 0.3 && this.ready.has(mirror)) return this.turnAround();
+      return this.rewind(d);
     }
     if (d.progress > 0.995) return void this.arrive(d.target, d.my, false);
     const ended = once(v, "ended");
@@ -245,6 +249,25 @@ export class TourController {
     }
     await ended;
     if (d.my === this.token) await this.arrive(d.target, d.my, false);
+  }
+
+  /** Spring back to frame 0 by seeking (ease out, 0.2 to 0.6 s), then rest on the still of origin. */
+  private rewind(d: Drag) {
+    const v = d.v;
+    const from = d.progress;
+    const ms = Math.min(600, 200 + from * 1000);
+    const t0 = performance.now();
+    const frame = (now: number) => {
+      if (d.my !== this.token || !this.alive) return;
+      const k = Math.min(1, (now - t0) / ms);
+      const p = from * Math.pow(1 - k, 3);
+      if (!v.seeking) v.currentTime = p * v.duration * 0.999;
+      if (k < 1) return void requestAnimationFrame(frame);
+      const done = () => d.my === this.token && this.cancel();
+      if (v.seeking) v.addEventListener("seeked", done, { once: true });
+      else done();
+    };
+    requestAnimationFrame(frame);
   }
 
   destroy() {

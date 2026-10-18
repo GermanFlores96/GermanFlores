@@ -77,8 +77,9 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     };
 
     // Touch: once the finger has clearly moved, the trip follows it (a full trip = 70 % of the screen height).
-    // On release it finishes on its own if it went a quarter of the way or the flick was fast enough in that
-    // direction; otherwise it plays back to the scene it left. When following is not possible (a trip already
+    // On release it finishes on its own if it went a quarter of the way (unless the finger was flicking back) or the
+    // flick was fast enough in that direction; otherwise it springs back to the scene it left. When following is not
+    // possible (a trip already
     // playing, the edge of the tour, still images, video not downloaded yet), the gesture is a plain swipe.
     let y0 = 0;
     let t0 = 0;
@@ -119,7 +120,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       if (dragging && c) {
         dragging = false;
         const progress = (dir * dy - 10) / (window.innerHeight * 0.7);
-        c.dragEnd(progress > 0.25 || dir * velocity > 0.35);
+        const along = dir * velocity; // > 0: finger still moving the way of the trip at release
+        c.dragEnd(along > 0.35 || (progress > 0.25 && along > -0.35));
         return;
       }
       const fast = Math.abs(dy) / Math.max(1, performance.now() - t0) > 0.4; // a flick counts even if short
