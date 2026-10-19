@@ -310,14 +310,16 @@ export class TourController {
   private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
     this.set({ moving: true, target });
-    try {
-      await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
-    } catch {
-      if (my === this.token) await this.arrive(target, my, true); // network failed: crossfade instead
-      return;
-    }
-    if (my !== this.token || !this.alive) return;
-    this.set({ loading: null });
+    // Blob video works: download the whole trip first. Otherwise the video element loads it directly (once).
+    if (this.blobVideo) {
+      try {
+        await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
+      } catch {
+        if (my === this.token) await this.arrive(target, my, true); // network failed: crossfade instead
+        return;
+      }
+      if (my !== this.token || !this.alive) return;
+    } else if (!this.ready.has(url)) this.set({ loading: -1 });
 
     // Prepare the hidden video (source, position), then swap it in on its first painted frame.
     const nextIdx = this.cur === 0 ? 1 : 0;
@@ -325,6 +327,7 @@ export class TourController {
     const old = this.o.videos[this.cur];
     const loaded = await this.load(v, url);
     if (my !== this.token) return;
+    this.set({ loading: null });
     if (!loaded) return void (await this.arrive(target, my, true)); // the video will not play: crossfade instead
     if (Math.abs(v.currentTime - startAt) > 0.01) {
       v.currentTime = startAt;
@@ -493,7 +496,8 @@ export class TourController {
   /** Background download; past either end of the tour there is simply nothing to fetch. Skipped while the visitor
    *  reads the sections below (the tour is scrolled away), so their images are not stuck behind unseen clips. */
   private prefetch(url: string | undefined) {
-    if (!url || window.scrollY > window.innerHeight / 2) return;
+    // Without blob video the element loads each trip itself: a background download would only fetch it twice.
+    if (!url || !this.blobVideo || window.scrollY > window.innerHeight / 2) return;
     this.fetch(url).catch(() => {});
   }
 
