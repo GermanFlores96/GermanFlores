@@ -1,15 +1,17 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { getDictionary } from "@/content/dictionaries";
 import { palette, site } from "@/content/shared";
-import { hasLocale, locales } from "@/content/types";
+import { hasLocale, locales, type Locale } from "@/content/types";
 
 // The share image (LinkedIn, WhatsApp, X...): the diorama with the name and role on it, one per language, built at
 // compile time. Without text, a shared link showed a picture and nothing saying whose site it was.
 export const alt = `${site.name} · Senior Software Engineer`;
 export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+// JPEG: the PNG next/og makes of a photographic background weighs ~600 KB, and WhatsApp drops previews over ~300 KB.
+export const contentType = "image/jpeg";
 
 export function generateStaticParams() {
   return locales.map((lang) => ({ lang }));
@@ -47,10 +49,19 @@ export default async function Image({
   params: Promise<{ lang: string }>;
 }) {
   const { lang } = await params;
-  const { meta, nav } = getDictionary(hasLocale(lang) ? lang : "es");
+  const jpeg = await render(hasLocale(lang) ? lang : "es");
+  return new Response(new Uint8Array(Buffer.from(jpeg, "base64")), {
+    headers: { "Content-Type": contentType },
+  });
+}
+
+// Cached as a whole (base64 JPEG): the conversion is uncached work otherwise, and the route went back to per request.
+async function render(lang: Locale) {
+  "use cache";
+  const { meta, nav } = getDictionary(lang);
   const files = await assets();
 
-  return new ImageResponse(
+  const png = new ImageResponse(
     <div
       style={{
         display: "flex",
@@ -136,4 +147,8 @@ export default async function Image({
       ],
     },
   );
+  const jpeg = await sharp(Buffer.from(await png.arrayBuffer()))
+    .jpeg({ quality: 84, mozjpeg: true })
+    .toBuffer();
+  return jpeg.toString("base64");
 }
