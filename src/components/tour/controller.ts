@@ -44,6 +44,7 @@ type Download = {
   promise: Promise<string>;
   progress: number | null;
   listeners: Set<(p: number | null) => void>;
+  abort: AbortController;
 };
 
 /**
@@ -68,6 +69,13 @@ const media = (v: HTMLVideoElement, type: string, ms: number) =>
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+// Content first: nobody waits for a video. The first chapter's copy is on screen from the start and the intro plays
+// under it only if it arrives within a few seconds; a trip that is not here in time becomes a crossfade (it keeps
+// downloading for next time); the loading badge only shows on a noticeable wait.
+const INTRO_WAIT = 4000;
+const TRIP_WAIT = 1200;
+const LOADING_DELAY = 600;
+
 const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 export class TourController {
@@ -83,6 +91,7 @@ export class TourController {
   private timers: number[] = [];
   private alive = true;
   private drag: Drag | null = null;
+  private prefetchGen = 0; // bumped when a new background download queue starts
   private blobVideo = true; // false once a blob URL failed to load: trips then play from their plain URL
 
   constructor(private o: Options) {
@@ -116,7 +125,25 @@ export class TourController {
       return;
     }
     await this.show(this.o.start, false);
-    void this.play(this.o.intro, 0, 0);
+    const token = this.token;
+    const quick = await Promise.race([
+      this.fetch(this.o.intro).then(
+        () => true,
+        () => false,
+      ),
+      delay(INTRO_WAIT).then(() => false),
+    ]);
+    if (!this.alive) return;
+    if (this.token !== token) {
+      // The visitor already moved on: the intro is no longer needed.
+      if (!this.ready.has(this.o.intro)) this.downloads.get(this.o.intro)?.abort.abort();
+      return;
+    }
+    if (quick) void this.play(this.o.intro, 0, 0);
+    else {
+      this.downloads.get(this.o.intro)?.abort.abort(); // slow connection: skip the intro, save its data
+      this.jump(0);
+    }
     this.later(() => this.prefetch(this.o.trips[0]), 1500);
   }
 
@@ -310,16 +337,22 @@ export class TourController {
   private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
     this.set({ moving: true, target });
-    // Blob video works: download the whole trip first. Otherwise the video element loads it directly (once).
-    if (this.blobVideo) {
-      try {
-        await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
-      } catch {
-        if (my === this.token) await this.arrive(target, my, true); // network failed: crossfade instead
-        return;
-      }
+    // Blob video works: the whole trip must be downloaded, and only a short wait is acceptable. Otherwise the video
+    // element loads it directly (once), with the same limit inside load().
+    if (this.blobVideo && !this.ready.has(url)) {
+      const t0 = performance.now();
+      let waiting = true;
+      const got = this.fetch(url, (p) => {
+        if (waiting && my === this.token && performance.now() - t0 > LOADING_DELAY) this.set({ loading: p ?? -1 });
+      }).then(
+        () => true,
+        () => false,
+      );
+      const inTime = await Promise.race([got, delay(TRIP_WAIT).then(() => false)]);
+      waiting = false;
       if (my !== this.token || !this.alive) return;
-    } else if (!this.ready.has(url)) this.set({ loading: -1 });
+      if (!inTime) return void (await this.arrive(target, my, true)); // crossfade; the download carries on
+    }
 
     // Prepare the hidden video (source, position), then swap it in on its first painted frame.
     const nextIdx = this.cur === 0 ? 1 : 0;
@@ -377,11 +410,18 @@ export class TourController {
     if (v.getAttribute("src") === src && v.readyState >= 1 && !v.error) return true;
     if (v.getAttribute("src") !== src) v.src = src;
     else v.load(); // same source after an error: try again
+    const meta = media(v, "loadedmetadata", blob ? 6000 : TRIP_WAIT);
+    // iOS Safari may not fetch a video at all until playback is requested: ask for it (muted and still hidden) and
+    // pause as soon as the metadata is in. The caller seeks to where the trip starts.
+    v.play().catch(() => {});
     try {
-      await media(v, "loadedmetadata", blob ? 4000 : 15000);
+      await meta;
+      v.pause();
       return true;
     } catch {
-      if (!blob || !this.alive) return false;
+      v.pause();
+      // Only a real error means blob video does not work here; a timeout is just a slow device or connection.
+      if (!blob || !this.alive || !v.error) return false;
       this.blobVideo = false;
       return this.load(v, url);
     }
@@ -482,23 +522,28 @@ export class TourController {
   private prefetchAround(k: number) {
     this.preloadStills(k);
     if (!this.o.animated) return;
-    this.prefetch(this.o.trips[k]); // next
-    this.prefetch(this.o.backs[k - 1]); // previous
-    // The mirrors of those two, needed when a drag is released short of halfway and plays back, and the trip after
-    // next, in case of a queued step.
-    this.later(() => {
-      this.prefetch(this.o.backs[k]);
-      this.prefetch(this.o.trips[k - 1]);
-      this.prefetch(this.o.trips[k + 1]);
-    }, 1500);
+    // One download at a time, most likely first: next, previous, then the mirrors of those two (a drag released short
+    // of halfway plays back) and the trip after next. In parallel they shared a slow connection and all came late.
+    // Arriving at another chapter starts a new queue; the old one stops after its current download.
+    const queue = [this.o.trips[k], this.o.backs[k - 1], this.o.backs[k], this.o.trips[k - 1], this.o.trips[k + 1]];
+    const gen = ++this.prefetchGen;
+    const next = (): void => {
+      if (!this.alive || gen !== this.prefetchGen || !queue.length) return;
+      const running = this.prefetch(queue.shift());
+      if (running) running.then(next, next);
+      else next();
+    };
+    next();
   }
 
   /** Background download; past either end of the tour there is simply nothing to fetch. Skipped while the visitor
    *  reads the sections below (the tour is scrolled away), so their images are not stuck behind unseen clips. */
-  private prefetch(url: string | undefined) {
+  private prefetch(url: string | undefined): Promise<string> | undefined {
     // Without blob video the element loads each trip itself: a background download would only fetch it twice.
     if (!url || !this.blobVideo || window.scrollY > window.innerHeight / 2) return;
-    this.fetch(url).catch(() => {});
+    const running = this.fetch(url);
+    running.catch(() => {});
+    return running;
   }
 
   // Whole file as a blob: plays instantly once here and never stalls halfway on a slow connection.
@@ -507,7 +552,7 @@ export class TourController {
     if (!d) {
       const ctrl = new AbortController();
       this.aborts.push(ctrl);
-      const entry: Download = { progress: null, listeners: new Set(), promise: Promise.resolve("") };
+      const entry: Download = { progress: null, listeners: new Set(), promise: Promise.resolve(""), abort: ctrl };
       entry.promise = (async () => {
         const r = await fetch(url, { signal: ctrl.signal });
         if (!r.ok) throw new Error(`http ${r.status}`);

@@ -319,11 +319,17 @@ export function mountScrollWorld(container, config) {
   // [web] the sections cover the flight: the track ends at (totalW + 1) vh, where #contenido starts.
   const pastFlight = () => (window.scrollY || window.pageYOffset) >= (totalW + 1) * vh - 2;
 
+  // [web] the badge only shows on a noticeable wait, and never before the first scroll (the landing copy needs no
+  // video): the still under it keeps moving with the scroll meanwhile.
+  const LOADING_DELAY = 1200;
+  let waitSince = 0;
   function updateLoading() {
+    if (!alive) return;
     const s = SEGMENTS[curSeg];
-    const waiting = !reduce && !!s && !s.ready && !!s.clip && !pastFlight();
-    loading.classList.toggle('is-on', waiting);
-    if (!waiting) return;
+    const waiting = !reduce && !!s && !s.ready && !!s.clip && window.scrollY > 0 && !pastFlight();
+    if (!waiting) { waitSince = 0; loading.classList.remove('is-on'); return; }
+    if (!waitSince) { waitSince = performance.now(); setTimeout(updateLoading, LOADING_DELAY + 50); }
+    loading.classList.toggle('is-on', performance.now() - waitSince >= LOADING_DELAY);
     const pct = s.progress == null ? null : Math.round(s.progress * 100);
     loadingText.textContent = (config.loadingLabel || 'Loading') + (pct == null ? '' : ' · ' + pct + ' %');
     loadingBar.style.transform = 'scaleX(' + (pct == null ? 0.25 : s.progress) + ')';
