@@ -238,13 +238,19 @@ export function mountScrollWorld(container, config) {
   // frozen poster. Now the segments around the current one are queued by priority:
   //   - the current segment first, alone, until it is ready (a second parallel download would only slow it);
   //   - then up to MAX_AHEAD segments ahead and MAX_BEHIND behind, two downloads at a time;
-  //   - jumping far away aborts the farthest running download so the new current one starts at once.
+  //   - jumping far away aborts the farthest running download so the new current one starts at once;
+  //   - once the sections cover the flight (a nav link, the skip button or plain scrolling) every download is
+  //     aborted and the queue waits, so the section images are not stuck behind clips nobody is watching.
   // Never more than MAX_AHEAD + MAX_BEHIND + 1 clips around the visitor, so data use stays bounded.
   const MAX_AHEAD = 3, MAX_BEHIND = 1;
 
   function pump() {
     // Under reduced motion / still mode we never load the clips at all: the stills simply cross-dissolve.
     if (reduce || !alive) return;
+    if (pastFlight()) {
+      SEGMENTS.forEach(x => { if (x.downloading) x.abort.abort(); });
+      return;
+    }
     const cur = SEGMENTS[curSeg];
     const order = [curSeg];
     for (let k = 1; k <= MAX_AHEAD; k++) order.push(curSeg + k);
@@ -310,9 +316,12 @@ export function mountScrollWorld(container, config) {
     s.el.appendChild(v); s.video = v; s.hasClip = true;
   }
 
+  // [web] the sections cover the flight: the track ends at (totalW + 1) vh, where #contenido starts.
+  const pastFlight = () => (window.scrollY || window.pageYOffset) >= (totalW + 1) * vh - 2;
+
   function updateLoading() {
     const s = SEGMENTS[curSeg];
-    const waiting = !reduce && !!s && !s.ready && !!s.clip && window.scrollY < (totalW + 1) * vh - 2;
+    const waiting = !reduce && !!s && !s.ready && !!s.clip && !pastFlight();
     loading.classList.toggle('is-on', waiting);
     if (!waiting) return;
     const pct = s.progress == null ? null : Math.round(s.progress * 100);
@@ -376,8 +385,7 @@ export function mountScrollWorld(container, config) {
       toward.innerHTML = `<span>↑ ${esc(SECTIONS[bridge.si].label || '')}</span><i></i><span>${esc(SECTIONS[bridge.si + 1].label || '')} ↓</span>`;
     }
     scrollbarFill.style.transform = `scaleX(${clamp(y / (totalW * vh))})`;
-    // [web] sections now cover the flight: the track ends at (totalW + 1) vh, where #contenido starts.
-    container.classList.toggle('is-done', y >= (totalW + 1) * vh - 2);
+    container.classList.toggle('is-done', pastFlight());
     hint.style.opacity = clamp(1 - y / (0.5 * vh));
     if (particles) particles.style.transform = `translate3d(0, ${-y * 0.05}px, 0)`;
     ticking = false;

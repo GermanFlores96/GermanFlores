@@ -439,9 +439,11 @@ export class TourController {
     }, 1500);
   }
 
-  /** Background download; past either end of the tour there is simply nothing to fetch. */
+  /** Background download; past either end of the tour there is simply nothing to fetch. Skipped while the visitor
+   *  reads the sections below (the tour is scrolled away), so their images are not stuck behind unseen clips. */
   private prefetch(url: string | undefined) {
-    if (url) this.fetch(url).catch(() => {});
+    if (!url || window.scrollY > window.innerHeight / 2) return;
+    this.fetch(url).catch(() => {});
   }
 
   // Whole file as a blob: plays instantly once here and never stalls halfway on a slow connection.

@@ -206,7 +206,7 @@ export const en: Dictionary = {
     educationTitle: "Education",
     education: [
       {
-        school: "Dr. Federico Rivero Palacio",
+        school: "Instituto Universitario de Tecnología Dr. Federico Rivero Palacio",
         period: "2013 to 2018",
         degree: "Computer Engineering",
       },
