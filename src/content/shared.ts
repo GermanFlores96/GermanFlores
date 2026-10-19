@@ -67,15 +67,25 @@ export const TOUR: "chapters" | "scrub" = "chapters";
 
 // Phone chapter media (native 9:16), built by sw-work/scripts/build_tour.py. Same immutable cache rule as MEDIA:
 // a change means a new folder. v5 = 6 s trips with returns, gentle acceleration, a keyframe every 4 frames (they
-// follow the finger). v2 to v4 stay published but unused.
+// follow the finger). v6 = the same frames in AV1 and HEVC, about 55 % lighter at the same sharpness; each phone gets
+// the lightest one it decodes in hardware, and v5 (H.264) is the fallback. v2 to v4 stay published but unused.
 const TOUR_MEDIA = "v5";
-const base = `/vid/${TOUR_MEDIA}/m`;
 
 // trips[k]: chapter k -> k + 1; backs[k]: chapter k + 1 -> k (the same frames in reverse).
+const tripSet = (type: string, dir: string) => ({
+  type,
+  intro: `${dir}/intro.mp4`,
+  trips: [1, 2, 3, 4, 5].map((i) => `${dir}/t${i}.mp4`),
+  backs: [1, 2, 3, 4, 5].map((i) => `${dir}/r${i}.mp4`),
+});
+
 export const tourAssets = {
   start: `/img/${TOUR_MEDIA}/m/start.webp`,
-  intro: `${base}/intro.mp4`,
-  trips: [1, 2, 3, 4, 5].map((i) => `${base}/t${i}.mp4`),
-  backs: [1, 2, 3, 4, 5].map((i) => `${base}/r${i}.mp4`),
   rests: scenes.map((s) => `/img/${TOUR_MEDIA}/m/rest-${s.id}.webp`),
+  // Lightest first, the fallback last. The codec strings match the files (profile and level, from ffprobe).
+  encodings: [
+    tripSet('video/mp4; codecs="av01.0.05M.08"', "/vid/v6/m/av1"),
+    tripSet('video/mp4; codecs="hvc1.1.6.L93.90"', "/vid/v6/m/hevc"),
+    tripSet('video/mp4; codecs="avc1.64001F"', `/vid/${TOUR_MEDIA}/m`),
+  ],
 };

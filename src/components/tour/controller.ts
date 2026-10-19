@@ -18,13 +18,19 @@ export type TourState = {
   loading: number | null; // trip download progress 0..1, -1 when the size is unknown, null when not waiting
 };
 
+/** The trips in one encoding. */
+export type TripSet = {
+  type: string; // MIME type with codecs, as asked to the browser
+  intro: string; // trip into chapter 0
+  trips: string[]; // trips[k]: chapter k -> k + 1
+  backs: string[]; // backs[k]: chapter k + 1 -> k (trips[k] in reverse)
+};
+
 type Options = {
   videos: [HTMLVideoElement, HTMLVideoElement];
   layers: [HTMLImageElement, HTMLImageElement];
   start: string; // poster shown before the intro plays
-  intro: string; // trip into chapter 0
-  trips: string[]; // trips[k]: chapter k -> k + 1
-  backs: string[]; // backs[k]: chapter k + 1 -> k (trips[k] in reverse)
+  encodings: TripSet[]; // lightest first; the last one (H.264) plays everywhere and is the fallback
   rests: string[]; // still for each chapter
   animated: boolean; // false: still images only, no video downloads
   onChange: (state: TourState) => void;
@@ -69,6 +75,23 @@ const media = (v: HTMLVideoElement, type: string, ms: number) =>
 
 const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+/**
+ * Whether this device decodes an encoding smoothly: in hardware, so following the finger (constant seeking) stays
+ * fluid and the battery is spared. Browsers that cannot tell get the fallback.
+ */
+const decodes = async (type: string) => {
+  if (!document.createElement("video").canPlayType(type) || !navigator.mediaCapabilities?.decodingInfo) return false;
+  try {
+    const r = await navigator.mediaCapabilities.decodingInfo({
+      type: "file",
+      video: { contentType: type, width: 720, height: 1280, bitrate: 2_000_000, framerate: 24 },
+    });
+    return r.supported && r.powerEfficient;
+  } catch {
+    return false;
+  }
+};
+
 // Content first: nobody waits for a video. The first chapter's copy is on screen from the start and the intro plays
 // under it only if it arrives within a few seconds; a trip that is not here in time becomes a crossfade (it keeps
 // downloading for next time); the loading badge only shows on a noticeable wait.
@@ -93,8 +116,10 @@ export class TourController {
   private drag: Drag | null = null;
   private prefetchGen = 0; // bumped when a new background download queue starts
   private blobVideo = true; // false once a blob URL failed to load: trips then play from their plain URL
+  private enc: TripSet; // the encoding in use
 
   constructor(private o: Options) {
+    this.enc = o.encodings[o.encodings.length - 1];
     for (const v of o.videos) {
       // Required for inline autoplay on iOS; React does not reliably reflect `muted` as an attribute.
       v.muted = true;
@@ -124,10 +149,11 @@ export class TourController {
       await this.show(this.o.rests[0], false);
       return;
     }
-    await this.show(this.o.start, false);
+    const [, best] = await Promise.all([this.show(this.o.start, false), this.pickEncoding()]);
+    this.enc = best;
     const token = this.token;
     const quick = await Promise.race([
-      this.fetch(this.o.intro).then(
+      this.fetch(this.enc.intro).then(
         () => true,
         () => false,
       ),
@@ -136,15 +162,40 @@ export class TourController {
     if (!this.alive) return;
     if (this.token !== token) {
       // The visitor already moved on: the intro is no longer needed.
-      if (!this.ready.has(this.o.intro)) this.downloads.get(this.o.intro)?.abort.abort();
+      if (!this.ready.has(this.enc.intro)) this.downloads.get(this.enc.intro)?.abort.abort();
       return;
     }
-    if (quick) void this.play(this.o.intro, 0, 0);
+    if (quick) void this.play(this.enc.intro, 0, 0);
     else {
-      this.downloads.get(this.o.intro)?.abort.abort(); // slow connection: skip the intro, save its data
+      this.downloads.get(this.enc.intro)?.abort.abort(); // slow connection: skip the intro, save its data
       this.jump(0);
     }
-    this.later(() => this.prefetch(this.o.trips[0]), 1500);
+    this.later(() => this.prefetch(this.enc.trips[0]), 1500);
+  }
+
+  /** The lightest encoding this device plays well; the fallback when none of the others qualifies. */
+  private async pickEncoding() {
+    const all = this.o.encodings;
+    for (const set of all.slice(0, -1)) if (await decodes(set.type)) return set;
+    return all[all.length - 1];
+  }
+
+  /**
+   * The device does not really play the current encoding (it said it could): switch to the fallback for good.
+   * Returns the same trip in the fallback, or undefined when already there.
+   */
+  private downgrade(url: string) {
+    const old = this.enc;
+    const fallback = this.o.encodings[this.o.encodings.length - 1];
+    if (old === fallback) return;
+    this.enc = fallback;
+    this.prefetchGen++; // stop the background queue of the old encoding
+    for (const [u, d] of this.downloads) if (!this.ready.has(u)) d.abort.abort();
+    if (url === old.intro) return fallback.intro;
+    const i = old.trips.indexOf(url);
+    if (i >= 0) return fallback.trips[i];
+    const j = old.backs.indexOf(url);
+    return j >= 0 ? fallback.backs[j] : undefined;
   }
 
   /** One chapter forward (1) or back (-1). Returns false only for forward on the last chapter. */
@@ -163,7 +214,7 @@ export class TourController {
     if (dir > 0 && chapter >= this.last) return false;
     if (dir < 0 && chapter <= 0) return true;
     if (!this.o.animated) this.jump(chapter + dir);
-    else void this.play(dir > 0 ? this.o.trips[chapter] : this.o.backs[chapter - 1], chapter + dir, 0);
+    else void this.play(dir > 0 ? this.enc.trips[chapter] : this.enc.backs[chapter - 1], chapter + dir, 0);
     return true;
   }
 
@@ -194,7 +245,7 @@ export class TourController {
     const c = this.s.chapter;
     if (this.s.moving || !this.o.animated) return false;
     if ((dir > 0 && c >= this.last) || (dir < 0 && c <= 0)) return false;
-    const url = dir > 0 ? this.o.trips[c] : this.o.backs[c - 1];
+    const url = dir > 0 ? this.enc.trips[c] : this.enc.backs[c - 1];
     const src = this.ready.get(url);
     if (!src) {
       this.prefetch(url);
@@ -284,7 +335,7 @@ export class TourController {
       if (d.progress < 0.02) return this.cancel(); // barely moved: the still of origin is right there
       // A long way back plays the mirrored trip from this exact frame, when it is downloaded; anything else springs
       // back by seeking the same video, which needs no extra download.
-      const mirror = d.target > this.s.chapter ? this.o.backs[this.s.chapter] : this.o.trips[d.target];
+      const mirror = d.target > this.s.chapter ? this.enc.backs[this.s.chapter] : this.enc.trips[d.target];
       if (d.progress > 0.3 && this.ready.has(mirror)) return this.turnAround();
       return this.rewind(d);
     }
@@ -402,28 +453,41 @@ export class TourController {
 
   /**
    * Put a trip on a video element and wait for its metadata. Plays the downloaded blob; where blob video fails to load
-   * (WebKit), falls back to the plain URL for this and every later trip. False when the video cannot load at all.
+   * (WebKit), falls back to the plain URL for this and every later trip; where the file itself fails, to the fallback
+   * encoding. False when the video cannot load at all.
    */
   private async load(v: HTMLVideoElement, url: string): Promise<boolean> {
     const blob = this.blobVideo ? this.ready.get(url) : undefined;
-    const src = blob ?? url;
+    if (await this.attach(v, blob ?? url, blob ? 6000 : TRIP_WAIT)) return true;
+    // Only a real error means something does not work here; a timeout is just a slow device or connection.
+    if (!this.alive || !v.error) return false;
+    if (blob) {
+      const ok = await this.attach(v, url, TRIP_WAIT);
+      if (!this.alive) return false;
+      if (ok || !v.error) {
+        this.blobVideo = false; // the plain file loads (or is merely slow): blob video is what fails
+        return ok;
+      }
+    }
+    const fallback = this.downgrade(url);
+    return fallback ? this.load(v, fallback) : false;
+  }
+
+  private async attach(v: HTMLVideoElement, src: string, ms: number): Promise<boolean> {
     if (v.getAttribute("src") === src && v.readyState >= 1 && !v.error) return true;
     if (v.getAttribute("src") !== src) v.src = src;
     else v.load(); // same source after an error: try again
-    const meta = media(v, "loadedmetadata", blob ? 6000 : TRIP_WAIT);
+    const meta = media(v, "loadedmetadata", ms);
     // iOS Safari may not fetch a video at all until playback is requested: ask for it (muted and still hidden) and
     // pause as soon as the metadata is in. The caller seeks to where the trip starts.
     v.play().catch(() => {});
     try {
       await meta;
-      v.pause();
       return true;
     } catch {
+      return false;
+    } finally {
       v.pause();
-      // Only a real error means blob video does not work here; a timeout is just a slow device or connection.
-      if (!blob || !this.alive || !v.error) return false;
-      this.blobVideo = false;
-      return this.load(v, url);
     }
   }
 
@@ -440,7 +504,7 @@ export class TourController {
   private turnAround() {
     const { chapter: from, target: to } = this.s;
     const heading = sign(to - from);
-    const opposite = heading > 0 ? this.o.backs[from] : this.o.trips[to];
+    const opposite = heading > 0 ? this.enc.backs[from] : this.enc.trips[to];
     const src = opposite && this.ready.get(opposite);
     const v = this.o.videos[this.cur];
     if (!src || !Number.isFinite(v.duration)) return this.cancel(); // not downloaded yet: go back with a fade
@@ -525,7 +589,7 @@ export class TourController {
     // One download at a time, most likely first: next, previous, then the mirrors of those two (a drag released short
     // of halfway plays back) and the trip after next. In parallel they shared a slow connection and all came late.
     // Arriving at another chapter starts a new queue; the old one stops after its current download.
-    const queue = [this.o.trips[k], this.o.backs[k - 1], this.o.backs[k], this.o.trips[k - 1], this.o.trips[k + 1]];
+    const queue = [this.enc.trips[k], this.enc.backs[k - 1], this.enc.backs[k], this.enc.trips[k - 1], this.enc.trips[k + 1]];
     const gen = ++this.prefetchGen;
     const next = (): void => {
       if (!this.alive || gen !== this.prefetchGen || !queue.length) return;
