@@ -1,6 +1,7 @@
 "use client";
 
 import { writeChoice, type MotionChoice } from "@/lib/motion";
+import { MOTION_CHOICE } from "@/content/shared";
 import type { Dictionary } from "@/content/types";
 
 type Props = {
@@ -17,6 +18,7 @@ const buttonClass =
 // Notice states: showing still images (data saver, or chosen) offers the animation back; a reduced motion system
 // with the animation running offers the still images until the visitor answers. Everyone else sees nothing.
 export function MotionNotice({ motion, reduced, choice, stills, className = "" }: Props) {
+  if (!MOTION_CHOICE) return null;
   const notice = stills
     ? choice === "still"
       ? motion.noticeStill

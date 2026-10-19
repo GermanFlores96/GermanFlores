@@ -72,6 +72,12 @@ export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${
 //   "scrub":    the scroll tour everywhere, phones included. Kept as a one line fallback.
 export const TOUR: "chapters" | "scrub" = "chapters";
 
+// Offer still images instead of the animated tour (MotionNotice): to systems that ask for reduced motion, and by
+// default to data saver or 2G. Off since 2026-10-19 (German's call): the notice showed on many ordinary computers
+// (Windows with animations off, remote desktop), and the tour only moves when the visitor swipes or scrolls; slow
+// connections already fall back to crossfades on their own. true brings the notice and the choice back.
+export const MOTION_CHOICE = false;
+
 // Phone chapter media (native 9:16), built by sw-work/scripts/build_tour.py. Same immutable cache rule as MEDIA:
 // a change means a new folder. v5 = 6 s trips with returns, gentle acceleration, a keyframe every 4 frames (they
 // follow the finger). v6 = the same frames in AV1 and HEVC, about 55 % lighter at the same sharpness; each phone gets

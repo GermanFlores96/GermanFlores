@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { MOTION_CHOICE } from "@/content/shared";
 
 // The tour is animated for everyone by default: the video never plays on its own, it only moves when the visitor
 // asks for the next scene. Many systems report `prefers-reduced-motion` without the person knowing (Windows with
@@ -8,6 +9,7 @@ import { useSyncExternalStore } from "react";
 // images. People who do want less motion get a visible choice, remembered for the session (sessionStorage, not a
 // cookie). Data saver is different: it is an explicit request to spend less data, so those visitors start with the
 // still images (no video downloads) and can turn the animation on.
+// With MOTION_CHOICE off (content/shared.ts) none of this applies: everyone gets the animated tour and no notice.
 const REDUCED = "(prefers-reduced-motion: reduce)";
 const CHOICE_KEY = "sw-motion";
 const CHOICE_EVENT = "sw-motion-change";
@@ -78,6 +80,6 @@ export function useMotionPrefs() {
   // False during server render and hydration, true once the real client values above are known. Players wait
   // for it, otherwise they would start downloading with the server defaults and then restart.
   const ready = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const stills = choice === "still" || (lowData && choice !== "animated");
+  const stills = MOTION_CHOICE && (choice === "still" || (lowData && choice !== "animated"));
   return { reduced, choice, lowData, ready, stills };
 }
