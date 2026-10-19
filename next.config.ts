@@ -31,6 +31,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
+  // The few images are already small WebP files (350 KB in all). Served as they are from the CDN they arrive in
+  // well under a second; through the image optimizer a cold variant took 6 s or more to start.
+  images: { unoptimized: true },
   partialPrefetching: true,
   turbopack: {
     rules: {
