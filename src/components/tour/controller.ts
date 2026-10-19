@@ -206,9 +206,8 @@ export class TourController {
       if (heading === 0) {
         // intro: a forward step is queued for when it lands, a back step has nowhere to go
         if (dir > 0) this.pending = 1;
-      } else if (dir === heading) {
-        if ((dir > 0 && target < this.last) || (dir < 0 && target > 0)) this.pending = dir;
-      } else this.turnAround();
+      } else if (dir !== heading) this.turnAround();
+      // Same way as the trip: ignored. One swipe is one chapter, however many come while it plays.
       return true;
     }
     if (dir > 0 && chapter >= this.last) return false;
