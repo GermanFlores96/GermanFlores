@@ -46,8 +46,27 @@ type Download = {
   listeners: Set<(p: number | null) => void>;
 };
 
-const once = (el: EventTarget, type: string) =>
-  new Promise<void>((resolve) => el.addEventListener(type, () => resolve(), { once: true }));
+/**
+ * Resolves on `type`; rejects on a media error or after `ms`. A video that cannot load fires nothing but `error`, so
+ * waiting for its events alone hung the tour forever (seen on WebKit with blob video).
+ */
+const media = (v: HTMLVideoElement, type: string, ms: number) =>
+  new Promise<void>((resolve, reject) => {
+    const finish = (ok: boolean) => {
+      window.clearTimeout(timer);
+      v.removeEventListener(type, onOk);
+      v.removeEventListener("error", onError);
+      if (ok) resolve();
+      else reject(new Error(`video ${type}`));
+    };
+    const onOk = () => finish(true);
+    const onError = () => finish(false);
+    const timer = window.setTimeout(() => finish(false), ms);
+    v.addEventListener(type, onOk);
+    v.addEventListener("error", onError);
+  });
+
+const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
 const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
@@ -64,6 +83,7 @@ export class TourController {
   private timers: number[] = [];
   private alive = true;
   private drag: Drag | null = null;
+  private blobVideo = true; // false once a blob URL failed to load: trips then play from their plain URL
 
   constructor(private o: Options) {
     for (const v of o.videos) {
@@ -163,13 +183,15 @@ export class TourController {
     this.set({ moving: true, target: c + dir });
     void (async () => {
       const v = d.v;
-      if (v.getAttribute("src") !== src) {
-        v.src = src;
-        await once(v, "loadedmetadata");
-      } else if (v.readyState < 1) await once(v, "loadedmetadata");
+      const loaded = await this.load(v, url);
+      if (my !== this.token) return;
+      if (!loaded) {
+        this.drag = null;
+        return this.cancel();
+      }
       if (Math.abs(v.currentTime) > 0.01) {
         v.currentTime = 0;
-        await once(v, "seeked");
+        await media(v, "seeked", 3000).catch(() => {});
       }
       if (my !== this.token) return;
       // Frame 0 is the still underneath: swapping the video in is invisible.
@@ -240,15 +262,15 @@ export class TourController {
       return this.rewind(d);
     }
     if (d.progress > 0.995) return void this.arrive(d.target, d.my, false);
-    const ended = once(v, "ended");
+    const ended = this.ended(v, v.currentTime);
     try {
       await v.play();
     } catch {
       if (d.my === this.token) await this.arrive(d.target, d.my, true);
       return;
     }
-    await ended;
-    if (d.my === this.token) await this.arrive(d.target, d.my, false);
+    const stalled = await ended;
+    if (d.my === this.token) await this.arrive(d.target, d.my, stalled);
   }
 
   /** Spring back to frame 0 by seeking (ease out, 0.2 to 0.6 s), then rest on the still of origin. */
@@ -288,9 +310,8 @@ export class TourController {
   private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
     this.set({ moving: true, target });
-    let src: string;
     try {
-      src = await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
+      await this.fetch(url, (p) => my === this.token && this.set({ loading: p ?? -1 }));
     } catch {
       if (my === this.token) await this.arrive(target, my, true); // network failed: crossfade instead
       return;
@@ -302,22 +323,23 @@ export class TourController {
     const nextIdx = this.cur === 0 ? 1 : 0;
     const v = this.o.videos[nextIdx];
     const old = this.o.videos[this.cur];
-    if (v.getAttribute("src") !== src) {
-      v.src = src;
-      await once(v, "loadedmetadata");
-    } else if (v.readyState < 1) await once(v, "loadedmetadata");
+    const loaded = await this.load(v, url);
     if (my !== this.token) return;
+    if (!loaded) return void (await this.arrive(target, my, true)); // the video will not play: crossfade instead
     if (Math.abs(v.currentTime - startAt) > 0.01) {
       v.currentTime = startAt;
-      await once(v, "seeked");
+      await media(v, "seeked", 3000).catch(() => {});
       if (my !== this.token) return;
     }
 
-    const painted = new Promise<void>((resolve) => {
-      if ("requestVideoFrameCallback" in v) v.requestVideoFrameCallback(() => resolve());
-      else window.setTimeout(resolve, 60);
-    });
-    const ended = once(v, "ended");
+    const painted = Promise.race([
+      new Promise<void>((resolve) => {
+        if ("requestVideoFrameCallback" in v) v.requestVideoFrameCallback(() => resolve());
+        else window.setTimeout(resolve, 60);
+      }),
+      delay(250), // a hidden video may never present a frame on some engines
+    ]);
+    const ended = this.ended(v, startAt);
     try {
       await v.play();
     } catch {
@@ -338,8 +360,37 @@ export class TourController {
     old.pause();
     this.cur = nextIdx;
 
-    await ended;
-    if (my === this.token) await this.arrive(target, my, false);
+    const stalled = await ended;
+    if (my === this.token) await this.arrive(target, my, stalled);
+  }
+
+  /**
+   * Put a trip on a video element and wait for its metadata. Plays the downloaded blob; where blob video fails to load
+   * (WebKit), falls back to the plain URL for this and every later trip. False when the video cannot load at all.
+   */
+  private async load(v: HTMLVideoElement, url: string): Promise<boolean> {
+    const blob = this.blobVideo ? this.ready.get(url) : undefined;
+    const src = blob ?? url;
+    if (v.getAttribute("src") === src && v.readyState >= 1 && !v.error) return true;
+    if (v.getAttribute("src") !== src) v.src = src;
+    else v.load(); // same source after an error: try again
+    try {
+      await media(v, "loadedmetadata", blob ? 4000 : 15000);
+      return true;
+    } catch {
+      if (!blob || !this.alive) return false;
+      this.blobVideo = false;
+      return this.load(v, url);
+    }
+  }
+
+  /** Resolves when the trip ends: false when it played out, true when it errored or stalled well past its length. */
+  private ended(v: HTMLVideoElement, startAt = 0): Promise<boolean> {
+    const left = Number.isFinite(v.duration) ? v.duration - startAt : 6;
+    return media(v, "ended", left * 1000 + 4000).then(
+      () => false,
+      () => true,
+    );
   }
 
   /** Change direction mid trip: the opposite video continues from the mirrored time. */

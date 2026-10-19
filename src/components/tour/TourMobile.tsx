@@ -187,8 +187,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       <img ref={layerA} src={assets.start} alt="" className="tour-layer is-on" style={{ zIndex: 2 }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img ref={layerB} alt="" className="tour-layer" />
-      <video ref={videoA} className="tour-video" muted playsInline preload="none" aria-hidden />
-      <video ref={videoB} className="tour-video" muted playsInline preload="none" aria-hidden />
+      <video ref={videoA} className="tour-video" muted playsInline preload="auto" aria-hidden />
+      <video ref={videoB} className="tour-video" muted playsInline preload="auto" aria-hidden />
 
       {/* Legibility backing for the copy at the bottom. */}
       <div className="from-bg via-bg/80 pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-3/4 bg-linear-to-t to-transparent" />
