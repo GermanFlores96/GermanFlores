@@ -1,7 +1,8 @@
 // Language independent data: contact links, media paths, pacing and accents of the flight.
 export const site = {
   name: "German Flores",
-  url: "https://germanflores.vercel.app", // switch here when a custom domain exists
+  url: "https://germanflores.dev",
+  legacyHost: "germanflores.vercel.app", // first address of the site: redirects here (src/proxy.ts)
   email: "jflcgerman@gmail.com",
   linkedin: "https://www.linkedin.com/in/german-flores-0a7837156",
   year: 2026,

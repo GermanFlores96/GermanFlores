@@ -49,4 +49,4 @@ npm start        # servir la build (puerto 3000)
   saltan al instante en lugar de recorrer (y descargar) todo el trayecto.
 - **Versión:** `/version` devuelve el commit desplegado (`NEXT_PUBLIC_BUILD_ID`, de `VERCEL_GIT_COMMIT_SHA`). Una pestaña
   abierta antes de un despliegue se recarga sola al volver a ella (`VersionCheck.tsx`), una vez por versión.
-- Variable opcional `NEXT_PUBLIC_SITE_URL` para el dominio final (canonical, sitemap, og). Por defecto `site.url` en `shared.ts` (hoy `https://germanflores.vercel.app`).
+- Variable opcional `NEXT_PUBLIC_SITE_URL` para el dominio final (canonical, sitemap, og). Por defecto `site.url` en `shared.ts` (hoy `https://germanflores.dev`; la dirección antigua `germanflores.vercel.app` redirige a ella desde `src/proxy.ts`).

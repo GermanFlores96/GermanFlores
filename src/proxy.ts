@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { site } from "@/content/shared";
 import { defaultLocale, locales, type Locale } from "@/content/types";
 
 // First supported language found in Accept-Language, honouring the order of the header.
@@ -20,7 +21,13 @@ function pickLocale(request: NextRequest): Locale {
 }
 
 export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
+
+  // Links shared before the custom domain keep working: same path on the domain, permanently.
+  if (request.headers.get("host") === site.legacyHost) {
+    return NextResponse.redirect(new URL(pathname + search, site.url), 308);
+  }
+
   const hasLocale = locales.some(
     (locale) => pathname === `/${locale}` || pathname.startsWith(`/${locale}/`),
   );
