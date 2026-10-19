@@ -15,6 +15,7 @@ export type TourState = {
   chapter: number; // chapter at rest, or the one the current trip departed from
   moving: boolean; // a trip is playing
   target: number; // chapter the current trip goes to (equals chapter at rest and during the intro)
+  settling: boolean; // the trip is in its last moments, the camera settling into the target: its copy can come in
   loading: number | null; // trip download progress 0..1, -1 when the size is unknown, null when not waiting
 };
 
@@ -98,11 +99,14 @@ const decodes = async (type: string) => {
 const INTRO_WAIT = 4000;
 const TRIP_WAIT = 1200;
 const LOADING_DELAY = 600;
+// Seconds before the end of a trip when the copy of the chapter it arrives at starts coming in, so text and scene
+// land together instead of the text waiting for the trip to be over.
+const SETTLE_S = 1.2;
 
 const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
 export class TourController {
-  private s: TourState = { chapter: 0, moving: false, target: 0, loading: null };
+  private s: TourState = { chapter: 0, moving: false, target: 0, settling: false, loading: null };
   private token = 0; // bumped to cancel whatever trip is in flight
   private pending: 0 | 1 | -1 = 0; // one step queued while a trip plays
   private front: 0 | 1; // visible still layer
@@ -257,7 +261,7 @@ export class TourController {
       my, target: c + dir, v: this.o.videos[nextIdx], progress: 0, prepared: false, released: null, reseek: false,
     };
     this.drag = d;
-    this.set({ moving: true, target: c + dir });
+    this.set({ moving: true, target: c + dir, settling: false });
     void (async () => {
       const v = d.v;
       const loaded = await this.load(v, url);
@@ -346,6 +350,7 @@ export class TourController {
       if (d.my === this.token) await this.arrive(d.target, d.my, true);
       return;
     }
+    this.settleNear(v, d.my);
     const stalled = await ended;
     if (d.my === this.token) await this.arrive(d.target, d.my, stalled);
   }
@@ -386,7 +391,7 @@ export class TourController {
 
   private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
-    this.set({ moving: true, target });
+    this.set({ moving: true, target, settling: false });
     // Blob video works: the whole trip must be downloaded, and only a short wait is acceptable. Otherwise the video
     // element loads it directly (once), with the same limit inside load().
     if (this.blobVideo && !this.ready.has(url)) {
@@ -445,6 +450,7 @@ export class TourController {
     old.classList.remove("is-on");
     old.pause();
     this.cur = nextIdx;
+    this.settleNear(v, my);
 
     const stalled = await ended;
     if (my === this.token) await this.arrive(target, my, stalled);
@@ -499,6 +505,16 @@ export class TourController {
     );
   }
 
+  /** Flags the last SETTLE_S seconds of the trip playing on `v` (checked every frame while it plays). */
+  private settleNear(v: HTMLVideoElement, my: number) {
+    const tick = () => {
+      if (my !== this.token || !this.alive || !this.s.moving) return;
+      if (Number.isFinite(v.duration) && v.duration - v.currentTime <= SETTLE_S) return this.set({ settling: true });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   /** Change direction mid trip: the opposite video continues from the mirrored time. */
   private turnAround() {
     const { chapter: from, target: to } = this.s;
@@ -518,7 +534,7 @@ export class TourController {
     await this.show(this.o.rests[target], fade);
     if (my !== this.token) return;
     this.hideVideos(false);
-    this.set({ chapter: target, moving: false, target, loading: null });
+    this.set({ chapter: target, moving: false, target, settling: false, loading: null });
     this.prefetchAround(target);
     const queued = this.pending;
     this.pending = 0;
@@ -528,7 +544,7 @@ export class TourController {
   private jump(i: number) {
     this.token++;
     this.pending = 0;
-    this.set({ chapter: i, moving: false, target: i, loading: null });
+    this.set({ chapter: i, moving: false, target: i, settling: false, loading: null });
     void this.show(this.o.rests[i], true).then(() => this.hideVideos(true));
     this.prefetchAround(i);
   }
@@ -539,7 +555,7 @@ export class TourController {
     this.token++;
     this.pending = 0;
     this.hideVideos(true); // the still of the chapter of origin is still underneath
-    this.set({ moving: false, target: this.s.chapter, loading: null });
+    this.set({ moving: false, target: this.s.chapter, settling: false, loading: null });
   }
 
   private hideVideos(fade: boolean) {

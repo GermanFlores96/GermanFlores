@@ -18,7 +18,7 @@ type Props = {
 
 const assets = tourAssets;
 const LAST = scenes.length - 1;
-const initial: TourState = { chapter: 0, moving: false, target: 0, loading: null };
+const initial: TourState = { chapter: 0, moving: false, target: 0, settling: false, loading: null };
 
 // Phones: one full screen, TikTok style. Dragging up or down moves the camera with the finger towards the next or
 // previous chapter; letting go finishes the trip on its own (or plays back if it was a short drag). A swipe the other
@@ -173,8 +173,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     };
   }, [active]);
 
-  // Copy: hidden while a trip plays (except over the intro), shown once the scene has arrived.
-  const shown = st.moving ? (st.chapter === 0 && st.target === 0 ? 0 : -1) : st.chapter;
+  // Copy: hidden while a trip plays (except over the intro); the next chapter's comes in as the camera settles there.
+  const shown = st.moving ? (st.chapter === 0 && st.target === 0 ? 0 : st.settling ? st.target : -1) : st.chapter;
   const atRest = !st.moving;
 
   return (
@@ -199,9 +199,7 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
             key={scene.label}
             aria-hidden={shown !== i}
             inert={shown !== i}
-            className={`absolute inset-x-0 bottom-0 transition-all duration-500 ease-fluid ${
-              shown === i ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"
-            }`}
+            className={`tour-copy absolute inset-x-0 bottom-0 ${shown === i ? "is-on" : "pointer-events-none"}`}
           >
             <ChapterCopy
               scene={scene}
