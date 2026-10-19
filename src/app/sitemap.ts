@@ -6,7 +6,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? site.url;
   return locales.map((lang) => ({
     url: `${base}/${lang}`,
-    lastModified: new Date(),
+    lastModified: site.updated,
     alternates: {
       languages: Object.fromEntries(locales.map((l) => [l, `${base}/${l}`])),
     },

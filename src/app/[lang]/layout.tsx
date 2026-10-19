@@ -37,13 +37,12 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
       description: meta.description,
       url: `/${lang}`,
       locale: meta.ogLocale,
-      images: [{ url: "/og-image.jpg", width: 1200, height: 630, alt: meta.ogAlt }],
+      // og:image comes from opengraph-image.tsx next to this layout (one per language, with name and role).
     },
     twitter: {
       card: "summary_large_image",
       title: meta.title,
       description: meta.description,
-      images: ["/og-image.jpg"],
     },
   };
 }
@@ -51,17 +50,33 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
 export default async function RootLayout({ children, params }: LayoutProps<"/[lang]">) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
-  const { meta } = getDictionary(lang);
+  const { meta, nav, career } = getDictionary(lang);
 
+  // A profile page about one person (schema.org ProfilePage, as Google recommends for personal sites).
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? site.url;
   const person = {
-    "@context": "https://schema.org",
     "@type": "Person",
+    "@id": `${base}/#person`,
     name: site.name,
-    jobTitle: "Senior Software Engineer",
+    alternateName: site.alternateName,
+    url: base,
+    image: `${base}${site.photo}`,
+    jobTitle: nav.brandRole,
     description: meta.description,
     email: `mailto:${site.email}`,
     sameAs: [site.linkedin],
     address: { "@type": "PostalAddress", addressLocality: "Caracas", addressCountry: "VE" },
+    alumniOf: career.education.map((e) => ({ "@type": "EducationalOrganization", name: e.school })),
+    knowsAbout: site.knowsAbout,
+  };
+  const profile = {
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    url: `${base}/${lang}`,
+    name: meta.title,
+    inLanguage: lang,
+    dateModified: site.updated,
+    mainEntity: person,
   };
 
   return (
@@ -71,7 +86,7 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
         <VersionCheck />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(person) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(profile) }}
         />
       </body>
     </html>

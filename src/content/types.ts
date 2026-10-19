@@ -23,7 +23,8 @@ export type CaseCopy = {
 };
 
 export type Dictionary = {
-  meta: { title: string; description: string; ogLocale: string; ogAlt: string };
+  // ogLine: what follows the role on the share image (opengraph-image.tsx).
+  meta: { title: string; description: string; ogLocale: string; ogLine: string };
   nav: {
     brandRole: string;
     links: { id: string; label: string }[];

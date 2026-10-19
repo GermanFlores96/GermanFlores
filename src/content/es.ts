@@ -6,7 +6,7 @@ export const es: Dictionary = {
     description:
       "Ingeniero de software con más de 9 años construyendo software seguro en fintech, banca y pagos: apps para iOS y Android, web con Next.js y herramientas con agentes de IA.",
     ogLocale: "es_VE",
-    ogAlt: "German Flores y su mundo de diorama: software seguro, a la velocidad de la IA.",
+    ogLine: "Móvil, web e IA",
   },
   nav: {
     brandRole: "Senior Software Engineer",

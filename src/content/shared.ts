@@ -1,11 +1,18 @@
 // Language independent data: contact links, media paths, pacing and accents of the flight.
 export const site = {
   name: "German Flores",
+  alternateName: "Germán Flores", // how many people will type it
   url: "https://germanflores.dev",
   legacyHost: "germanflores.vercel.app", // first address of the site: redirects here (src/proxy.ts)
   email: "jflcgerman@gmail.com",
   linkedin: "https://www.linkedin.com/in/german-flores-0a7837156",
   year: 2026,
+  photo: "/img/german.webp",
+  // Last content change, for the sitemap and the structured data. Bump it when the copy changes, not on every deploy:
+  // search engines stop trusting a date that is always today.
+  updated: "2026-10-19",
+  // Structured data (Person.knowsAbout): what search engines should associate the name with.
+  knowsAbout: ["React Native", "Next.js", "TypeScript", "iOS", "Android", "Mobile security", "Fintech", "AI agents"],
 } as const;
 
 export const palette = {
