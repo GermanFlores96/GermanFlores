@@ -72,33 +72,62 @@ export const connectorsMobile = [1, 2, 3, 4, 5].map((i) => `/vid/${MEDIA}/conn${
 //   "scrub":    the scroll tour everywhere, phones included. Kept as a one line fallback.
 export const TOUR: "chapters" | "scrub" = "chapters";
 
+// Which tour wide screens (>= 1024 px) get, with TOUR = "chapters":
+//   "chapters": the same as phones, in 16:9: one wheel gesture or arrow key plays the whole trip to the next scene.
+//   "scrub":    the earlier full screen scroll tour (ScrollWorld, media v1). Kept as a one line fallback.
+export const DESKTOP_TOUR: "chapters" | "scrub" = "chapters";
+
 // Offer still images instead of the animated tour (MotionNotice): to systems that ask for reduced motion, and by
 // default to data saver or 2G. Off since 2026-10-19 (German's call): the notice showed on many ordinary computers
 // (Windows with animations off, remote desktop), and the tour only moves when the visitor swipes or scrolls; slow
 // connections already fall back to crossfades on their own. true brings the notice and the choice back.
 export const MOTION_CHOICE = false;
 
-// Phone chapter media (native 9:16), built by sw-work/scripts/build_tour.py. Same immutable cache rule as MEDIA:
-// a change means a new folder. v5 = 6 s trips with returns, gentle acceleration, a keyframe every 4 frames (they
-// follow the finger). v6 = the same frames in AV1 and HEVC, about 55 % lighter at the same sharpness; each phone gets
-// the lightest one it decodes in hardware, and v5 (H.264) is the fallback. v2 to v4 stay published but unused.
+// Chapter tour media (native 9:16 on phones, 16:9 on wide screens), built by sw-work/scripts/build_tour.py. Same
+// immutable cache rule as MEDIA: a change means a new folder.
+//   v5 = H.264, 6 s trips with returns, gentle acceleration; also every still. The fallback that plays everywhere.
+//   v6 = the same frames in AV1 and HEVC, about 55 % lighter at the same sharpness; each device gets the lightest one
+//        it decodes in hardware.
+//   v7 = the "lite" tier of each codec (fewer pixels), for connections too slow to bring a normal trip in time; the
+//        player picks the tier from the measured speed (controller.ts, evaluateTier).
+// Phones keep a keyframe every 4 frames (the trip follows the finger); wide screens only play trips, so theirs is every
+// second. v2 to v4 stay published but unused.
 const TOUR_MEDIA = "v5";
 
-// trips[k]: chapter k -> k + 1; backs[k]: chapter k + 1 -> k (the same frames in reverse).
-const tripSet = (type: string, dir: string) => ({
+export type TourVariant = "phone" | "desktop";
+
+// trips[k]: chapter k -> k + 1; backs[k]: chapter k + 1 -> k (the same frames in reverse). `kb` is about how big one
+// trip is (average of the built files), so the player can tell what a connection can bring in time.
+type Set = { type: string; kb: number; intro: string; trips: string[]; backs: string[]; lite?: Set };
+const tripSet = (type: string, dir: string, kb: number, lite?: Set): Set => ({
   type,
+  kb,
   intro: `${dir}/intro.mp4`,
   trips: [1, 2, 3, 4, 5].map((i) => `${dir}/t${i}.mp4`),
   backs: [1, 2, 3, 4, 5].map((i) => `${dir}/r${i}.mp4`),
+  ...(lite ? { lite } : {}),
+});
+
+// The codec strings match the files (profile and level, from ffprobe); lite files carry the same ones.
+const AV1 = 'video/mp4; codecs="av01.0.05M.08"';
+const HEVC = 'video/mp4; codecs="hvc1.1.6.L93.90"';
+const H264 = 'video/mp4; codecs="avc1.64001F"';
+
+type Sizes = Record<"av1" | "hevc" | "h264" | "av1Lite" | "hevcLite" | "h264Lite", number>;
+
+const tour = (key: "m" | "d", size: [number, number], kb: Sizes) => ({
+  start: `/img/${TOUR_MEDIA}/${key}/start.webp`,
+  rests: scenes.map((s) => `/img/${TOUR_MEDIA}/${key}/rest-${s.id}.webp`),
+  size,
+  // Lightest first, the fallback last.
+  encodings: [
+    tripSet(AV1, `/vid/v6/${key}/av1`, kb.av1, tripSet(AV1, `/vid/v7/${key}/av1`, kb.av1Lite)),
+    tripSet(HEVC, `/vid/v6/${key}/hevc`, kb.hevc, tripSet(HEVC, `/vid/v7/${key}/hevc`, kb.hevcLite)),
+    tripSet(H264, `/vid/${TOUR_MEDIA}/${key}`, kb.h264, tripSet(H264, `/vid/v7/${key}/h264`, kb.h264Lite)),
+  ],
 });
 
 export const tourAssets = {
-  start: `/img/${TOUR_MEDIA}/m/start.webp`,
-  rests: scenes.map((s) => `/img/${TOUR_MEDIA}/m/rest-${s.id}.webp`),
-  // Lightest first, the fallback last. The codec strings match the files (profile and level, from ffprobe).
-  encodings: [
-    tripSet('video/mp4; codecs="av01.0.05M.08"', "/vid/v6/m/av1"),
-    tripSet('video/mp4; codecs="hvc1.1.6.L93.90"', "/vid/v6/m/hevc"),
-    tripSet('video/mp4; codecs="avc1.64001F"', `/vid/${TOUR_MEDIA}/m`),
-  ],
-};
+  phone: tour("m", [720, 1280], { av1: 1230, hevc: 1350, h264: 3000, av1Lite: 750, hevcLite: 830, h264Lite: 1630 }),
+  desktop: tour("d", [1280, 720], { av1: 1000, hevc: 1700, h264: 2750, av1Lite: 700, hevcLite: 1000, h264Lite: 1500 }),
+} satisfies Record<TourVariant, ReturnType<typeof tour>>;

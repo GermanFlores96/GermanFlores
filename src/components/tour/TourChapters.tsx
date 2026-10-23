@@ -6,25 +6,28 @@ import { ChapterCopy } from "./ChapterCopy";
 import { TourController, type TourState } from "./controller";
 import { MotionNotice } from "@/components/MotionNotice";
 import type { useMotionPrefs } from "@/lib/motion";
-import { scenes, tourAssets } from "@/content/shared";
+import { scenes, tourAssets, type TourVariant } from "@/content/shared";
 import type { Dictionary } from "@/content/types";
 
 type Props = {
-  active: boolean; // mounted and visible (narrow screen): only then does it load and play anything
+  variant: TourVariant; // phone: media 9:16, copy at the bottom, the finger drags the camera; desktop: 16:9, copy on the left
+  active: boolean; // mounted and visible (its screen size): only then does it load and play anything
   prefs: ReturnType<typeof useMotionPrefs>;
   flight: Dictionary["flight"];
   email: string;
 };
 
-const assets = tourAssets;
 const LAST = scenes.length - 1;
 const initial: TourState = { chapter: 0, moving: false, target: 0, settling: false, loading: null };
 
-// Phones: one full screen, TikTok style. Dragging up or down moves the camera with the finger towards the next or
-// previous chapter; letting go finishes the trip on its own (or plays back if it was a short drag). A swipe the other
-// way while a trip plays turns the camera around on the spot.
-// On the last chapter, swiping up leaves the tour for the profile sections, which scroll normally.
-export function TourMobile({ active, prefs, flight, email }: Props) {
+// One full screen, a chapter at a time. A gesture plays the whole trip to the next scene, never a scroll position.
+// Phones, TikTok style: dragging up or down moves the camera with the finger towards the next or previous chapter;
+// letting go finishes the trip on its own (or plays back if it was a short drag).
+// Wide screens: one wheel gesture (or arrow key) plays the trip. Either way a gesture the other way while a trip plays
+// turns the camera around on the spot, and on the last chapter one more gesture leaves the tour for the profile
+// sections, which scroll normally.
+export function TourChapters({ variant, active, prefs, flight, email }: Props) {
+  const desktop = variant === "desktop";
   const stage = useRef<HTMLDivElement>(null);
   const videoA = useRef<HTMLVideoElement>(null);
   const videoB = useRef<HTMLVideoElement>(null);
@@ -40,7 +43,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     const c = new TourController({
       videos: [videoA.current, videoB.current],
       layers: [layerA.current, layerB.current],
-      ...assets,
+      ...tourAssets[variant],
+      device: variant,
       animated,
       onChange: setSt,
     });
@@ -51,9 +55,9 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       ctrl.current = null;
       setSt(initial);
     };
-  }, [active, animated]);
+  }, [active, animated, variant]);
 
-  // Gestures: touch swipes, the wheel (narrow desktop windows) and the arrow keys.
+  // Gestures: touch swipes, the wheel and the arrow keys.
   useEffect(() => {
     const el = stage.current;
     if (!active || !el) return;
@@ -107,7 +111,8 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       const dy = y0 - y;
       if (!dir && Math.abs(dy) > 10) {
         dir = dy > 0 ? 1 : -1;
-        if (window.scrollY <= 4) {
+        // Wide screens only play trips (their files have a long keyframe interval): a touch there is a plain swipe.
+        if (window.scrollY <= 4 && !desktop) {
           dragging = c.dragBegin(dir);
           if (dragging) setSwiped(true);
         }
@@ -130,15 +135,19 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     };
 
     // One wheel gesture = one step: a new gesture needs a short pause, and steps are at least 900 ms apart,
-    // so trackpad inertia never skips scenes.
+    // so trackpad inertia never skips scenes. A gesture that began while the page was scrolled (coming back up from
+    // the sections) belongs to the page until it ends, so its inertia does not step back through the chapters.
     let lastWheel = 0;
     let lastStep = 0;
+    let ownGesture = false;
     const onWheel = (e: WheelEvent) => {
-      if (window.scrollY > 4) return; // let the page scroll normally while the tour is not fully in view
-      e.preventDefault();
+      if (e.ctrlKey) return; // pinch zoom
       const now = performance.now();
       const newGesture = now - lastWheel > 220;
       lastWheel = now;
+      if (newGesture) ownGesture = window.scrollY <= 4;
+      if (!ownGesture || window.scrollY > 4) return; // let the page scroll normally while the tour is not fully in view
+      e.preventDefault();
       if (Math.abs(e.deltaY) < 8 || (!newGesture && now - lastStep < 900)) return;
       lastStep = now;
       step(e.deltaY > 0 ? 1 : -1);
@@ -161,17 +170,18 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
     el.addEventListener("touchmove", onTouchMove, { passive: true });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
     el.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    el.addEventListener("wheel", onWheel, { passive: false });
+    // On the window, not the stage: the menu island floats above it, and a wheel over it should step the tour too.
+    window.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("keydown", onKey);
     return () => {
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
-      el.removeEventListener("wheel", onWheel);
+      window.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
     };
-  }, [active]);
+  }, [active, desktop]);
 
   // Copy: hidden while a trip plays (except over the intro); the next chapter's comes in as the camera settles there.
   const shown = st.moving ? (st.chapter === 0 && st.target === 0 ? 0 : st.settling ? st.target : -1) : st.chapter;
@@ -184,48 +194,78 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
       className="bg-bg relative h-svh touch-none overflow-hidden select-none"
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- crossfade layers driven by the controller */}
-      <img ref={layerA} src={assets.start} alt="" className="tour-layer is-on" style={{ zIndex: 2 }} />
+      <img ref={layerA} src={tourAssets[variant].start} alt="" className="tour-layer is-on" style={{ zIndex: 2 }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img ref={layerB} alt="" className="tour-layer" />
       <video ref={videoA} className="tour-video" muted playsInline preload="auto" aria-hidden />
       <video ref={videoB} className="tour-video" muted playsInline preload="auto" aria-hidden />
 
-      {/* Legibility backing for the copy at the bottom. */}
-      <div className="from-bg via-bg/80 pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-3/4 bg-linear-to-t to-transparent" />
+      {/* Legibility backing for the copy: at the bottom on phones, on the left on wide screens. */}
+      <div
+        className={
+          desktop
+            ? "from-bg via-bg/75 pointer-events-none absolute inset-y-0 left-0 z-[4] w-[min(64vw,880px)] bg-linear-to-r to-transparent"
+            : "from-bg via-bg/80 pointer-events-none absolute inset-x-0 bottom-0 z-[4] h-3/4 bg-linear-to-t to-transparent"
+        }
+      />
 
-      <div aria-live="polite" className="absolute inset-x-4 bottom-24 z-[5]">
+      <div
+        aria-live="polite"
+        className={
+          desktop
+            ? "absolute inset-y-0 left-0 z-[5] w-[min(54vw,680px)]"
+            : "absolute inset-x-4 bottom-24 z-[5]"
+        }
+      >
         {flight.scenes.map((scene, i) => (
           <div
             key={scene.label}
             aria-hidden={shown !== i}
             inert={shown !== i}
-            className={`tour-copy absolute inset-x-0 bottom-0 ${shown === i ? "is-on" : "pointer-events-none"}`}
+            className={`tour-copy absolute ${
+              desktop ? "top-1/2 right-0 left-[clamp(24px,6vw,112px)] -translate-y-1/2" : "inset-x-0 bottom-0"
+            } ${shown === i ? "is-on" : "pointer-events-none"}`}
           >
             <ChapterCopy
               scene={scene}
               index={i}
               total={scenes.length}
               accent={scenes[i].accent}
-              compact
+              compact={!desktop}
               cta={i === LAST ? { ...flight.finalCta, email } : undefined}
             />
           </div>
         ))}
       </div>
 
-      {/* Gesture hint: first chapter until the first swipe, and on the last chapter. */}
+      {/* Gesture hint: first chapter until the first gesture, and on the last chapter. */}
       <div
         aria-hidden
-        className={`text-muted pointer-events-none absolute inset-x-0 bottom-6 z-[5] flex items-center justify-center gap-2 text-xs font-semibold tracking-widest uppercase transition-opacity duration-500 ease-fluid ${
+        className={`text-muted pointer-events-none absolute inset-x-0 bottom-6 z-[5] flex items-center gap-2 text-xs font-semibold tracking-widest uppercase transition-opacity duration-500 ease-fluid ${
+          desktop ? "justify-start pl-[clamp(24px,6vw,112px)]" : "justify-center"
+        } ${
           atRest && ((st.chapter === 0 && !swiped) || st.chapter === LAST) ? "opacity-100" : "opacity-0"
         }`}
       >
-        {st.chapter === LAST ? flight.swipeLast : flight.swipe}
-        <ArrowUp size={14} weight="bold" className="sw-bounce" />
+        {desktop
+          ? st.chapter === LAST
+            ? flight.more
+            : flight.scrollHint
+          : st.chapter === LAST
+            ? flight.swipeLast
+            : flight.swipe}
+        {desktop ? (
+          <ArrowDown size={14} weight="bold" className="sw-bounce" />
+        ) : (
+          <ArrowUp size={14} weight="bold" className="sw-bounce" />
+        )}
       </div>
 
       {/* Chapter dots. */}
-      <nav aria-label={flight.summaryLabel} className="absolute top-1/2 right-2 z-[6] flex -translate-y-1/2 flex-col">
+      <nav
+        aria-label={flight.summaryLabel}
+        className={`absolute top-1/2 z-[6] flex -translate-y-1/2 flex-col ${desktop ? "right-6" : "right-2"}`}
+      >
         {flight.scenes.map((scene, i) => (
           <button
             key={scene.label}
@@ -248,7 +288,11 @@ export function TourMobile({ active, prefs, flight, email }: Props) {
         ))}
       </nav>
 
-      <div className="pointer-events-none absolute inset-x-4 top-24 z-[6] flex flex-col items-end gap-2">
+      <div
+        className={`pointer-events-none absolute z-[6] flex flex-col items-end gap-2 ${
+          desktop ? "right-6 bottom-6 w-[28rem] max-w-[calc(100%-3rem)]" : "inset-x-4 top-24"
+        }`}
+      >
         <MotionNotice motion={flight.motion} reduced={prefs.reduced} choice={prefs.choice} stills={prefs.stills} />
         <a
           href="#contenido"

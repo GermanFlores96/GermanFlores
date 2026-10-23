@@ -10,6 +10,12 @@
 //
 // Layers, bottom to top: two still images that alternate for crossfades, then two trip videos that alternate so
 // one can be loaded and positioned while the other is still showing.
+//
+// Files come in tiers: the codec the device decodes in hardware (AV1, HEVC, else H.264), and for each of them a lite
+// version with fewer pixels. The connection picks the tier (see evaluateTier); every download also feeds the
+// measurements sent by TourMetrics.
+
+import { TourMetrics } from "./metrics";
 
 export type TourState = {
   chapter: number; // chapter at rest, or the one the current trip departed from
@@ -22,9 +28,11 @@ export type TourState = {
 /** The trips in one encoding. */
 export type TripSet = {
   type: string; // MIME type with codecs, as asked to the browser
+  kb: number; // about how big one trip is, to judge whether the connection can bring it in time
   intro: string; // trip into chapter 0
   trips: string[]; // trips[k]: chapter k -> k + 1
   backs: string[]; // backs[k]: chapter k + 1 -> k (trips[k] in reverse)
+  lite?: TripSet; // the same trips with fewer pixels, for slow connections
 };
 
 type Options = {
@@ -32,6 +40,8 @@ type Options = {
   layers: [HTMLImageElement, HTMLImageElement];
   start: string; // poster shown before the intro plays
   encodings: TripSet[]; // lightest first; the last one (H.264) plays everywhere and is the fallback
+  size: [number, number]; // width and height of the normal trips (to ask the browser about hardware decoding)
+  device: "phone" | "desktop"; // for the measurements
   rests: string[]; // still for each chapter
   animated: boolean; // false: still images only, no video downloads
   onChange: (state: TourState) => void;
@@ -45,6 +55,8 @@ type Drag = {
   prepared: boolean; // the trip video is on screen and seekable
   released: null | "finish" | "back";
   reseek: boolean; // a newer position arrived while the decoder was still seeking
+  url: string; // the trip being dragged and the files it belongs to, for the measurements
+  set: TripSet;
 };
 
 type Download = {
@@ -52,6 +64,7 @@ type Download = {
   progress: number | null;
   listeners: Set<(p: number | null) => void>;
   abort: AbortController;
+  background: boolean; // nobody is waiting for it (prefetch); false once a trip asks for it
 };
 
 /**
@@ -80,12 +93,12 @@ const delay = (ms: number) => new Promise<void>((resolve) => window.setTimeout(r
  * Whether this device decodes an encoding smoothly: in hardware, so following the finger (constant seeking) stays
  * fluid and the battery is spared. Browsers that cannot tell get the fallback.
  */
-const decodes = async (type: string) => {
+const decodes = async (type: string, [width, height]: [number, number]) => {
   if (!document.createElement("video").canPlayType(type) || !navigator.mediaCapabilities?.decodingInfo) return false;
   try {
     const r = await navigator.mediaCapabilities.decodingInfo({
       type: "file",
-      video: { contentType: type, width: 720, height: 1280, bitrate: 2_000_000, framerate: 24 },
+      video: { contentType: type, width, height, bitrate: 2_000_000, framerate: 24 },
     });
     return r.supported && r.powerEfficient;
   } catch {
@@ -102,6 +115,24 @@ const LOADING_DELAY = 600;
 // Seconds before the end of a trip when the copy of the chapter it arrives at starts coming in, so text and scene
 // land together instead of the text waiting for the trip to be over.
 const SETTLE_S = 1.2;
+// The connection decides the tier. A trip of the normal tier should be in before the visitor asks for it, and readers
+// dwell a few seconds on each chapter: when the measured speed needs longer than this for one, the lite tier (about
+// half the bytes) takes over; the normal tier returns when it would need less than half of it.
+const TRIP_BUDGET_S = 4;
+const SPEED_MIN_BYTES = 120_000; // a download must bring this much, and take this long, to count as a measure
+const SPEED_MIN_MS = 250;
+
+type Connection = EventTarget & { effectiveType?: string; downlink?: number; saveData?: boolean };
+
+/** What the browser says about the connection before anything has been measured (Chromium only; elsewhere: unknown). */
+const slowByReport = () => {
+  const c = (navigator as Navigator & { connection?: Connection }).connection;
+  if (!c) return false;
+  return Boolean(c.saveData) || ["slow-2g", "2g", "3g"].includes(c.effectiveType ?? "") || (c.downlink ?? 10) < 1.5;
+};
+
+/** "av01..." -> "av1", for the measurements. */
+const codecName = (type: string) => (type.includes("av01") ? "av1" : type.includes("hvc1") ? "hevc" : "h264");
 
 const sign = (n: number) => (n > 0 ? 1 : n < 0 ? -1 : 0);
 
@@ -120,16 +151,26 @@ export class TourController {
   private drag: Drag | null = null;
   private prefetchGen = 0; // bumped when a new background download queue starts
   private blobVideo = true; // false once a blob URL failed to load: trips then play from their plain URL
-  private enc: TripSet; // the encoding in use
+  private codec: TripSet; // the encoding this device decodes best (its normal tier)
+  private enc: TripSet; // the files in use: the codec's normal tier, or its lite tier on a slow connection
+  private lite = false;
+  private mbps: number | null = null; // measured connection speed; null until a download has told
+  private sizes = new Map<string, number>(); // trip url -> bytes
+  private stalls = 0; // times the playing trip ran dry
+  private metrics: TourMetrics;
 
   constructor(private o: Options) {
-    this.enc = o.encodings[o.encodings.length - 1];
+    this.codec = this.enc = o.encodings[o.encodings.length - 1];
+    this.metrics = new TourMetrics(o.device);
     for (const v of o.videos) {
       // Required for inline autoplay on iOS; React does not reliably reflect `muted` as an attribute.
       v.muted = true;
       v.playsInline = true;
       v.setAttribute("muted", "");
       v.setAttribute("playsinline", "");
+      v.addEventListener("waiting", () => {
+        if (this.s.moving) this.stalls++;
+      });
     }
     this.front = o.layers[1].classList.contains("is-on") ? 1 : 0;
   }
@@ -154,24 +195,32 @@ export class TourController {
       return;
     }
     const [, best] = await Promise.all([this.show(this.o.start, false), this.pickEncoding()]);
-    this.enc = best;
+    this.codec = best;
+    this.lite = slowByReport(); // until a download has measured the connection, the browser's own report decides
+    this.applyTier();
     const token = this.token;
+    const introSet = this.enc;
+    const introUrl = introSet.intro;
+    const t0 = performance.now();
     const quick = await Promise.race([
-      this.fetch(this.enc.intro).then(
+      this.fetch(introUrl).then(
         () => true,
         () => false,
       ),
       delay(INTRO_WAIT).then(() => false),
     ]);
     if (!this.alive) return;
+    // An intro that arrives is reported by play() (with its stalls); one that did not is skipped here.
+    if (!quick) this.note("intro", introSet, "skipped", performance.now() - t0, introUrl, 0);
+    this.retier();
     if (this.token !== token) {
       // The visitor already moved on: the intro is no longer needed.
-      if (!this.ready.has(this.enc.intro)) this.downloads.get(this.enc.intro)?.abort.abort();
+      if (!this.ready.has(introUrl)) this.downloads.get(introUrl)?.abort.abort();
       return;
     }
     if (quick) void this.play(this.enc.intro, 0, 0);
     else {
-      this.downloads.get(this.enc.intro)?.abort.abort(); // slow connection: skip the intro, save its data
+      this.downloads.get(introUrl)?.abort.abort(); // slow connection: skip the intro, save its data
       this.jump(0);
     }
     this.later(() => this.prefetch(this.enc.trips[0]), 1500);
@@ -180,26 +229,88 @@ export class TourController {
   /** The lightest encoding this device plays well; the fallback when none of the others qualifies. */
   private async pickEncoding() {
     const all = this.o.encodings;
-    for (const set of all.slice(0, -1)) if (await decodes(set.type)) return set;
+    for (const set of all.slice(0, -1)) if (await decodes(set.type, this.o.size)) return set;
     return all[all.length - 1];
+  }
+
+  private applyTier() {
+    this.enc = this.lite && this.codec.lite ? this.codec.lite : this.codec;
+  }
+
+  /**
+   * Normal or lite files, from the measured speed of the connection: lite when one normal trip would need longer than
+   * TRIP_BUDGET_S, back to normal when it would need less than half of that (so it does not flip back and forth).
+   * Only called at rest, never while a trip is being chosen.
+   */
+  private evaluateTier() {
+    if (this.mbps == null || !this.codec.lite) return;
+    const seconds = (this.codec.kb * 8) / (this.mbps * 1000);
+    if (!this.lite && seconds > TRIP_BUDGET_S) this.lite = true;
+    else if (this.lite && seconds < TRIP_BUDGET_S / 2) this.lite = false;
+    this.applyTier();
+  }
+
+  /**
+   * Re-evaluates the tier after the speed estimate changed. When it flips, the downloads running in the background
+   * belong to the other tier and would only hog a slow connection: they stop, and the queue starts again in the right
+   * one. A trip somebody is waiting for keeps downloading.
+   */
+  private retier() {
+    const before = this.enc;
+    this.evaluateTier();
+    if (this.enc === before || !this.alive) return;
+    this.prefetchGen++;
+    for (const [u, d] of this.downloads) if (d.background && !this.ready.has(u)) d.abort.abort();
+    if (!this.s.moving && this.s.target === this.s.chapter) this.prefetchAround(this.s.chapter);
+  }
+
+  /** Counts a download in the connection speed (only downloads big and long enough to tell). */
+  private measure(bytes: number, ms: number) {
+    if (bytes < SPEED_MIN_BYTES || ms < SPEED_MIN_MS) return;
+    const mbps = (bytes * 8) / ms / 1000;
+    this.mbps = this.mbps == null ? mbps : 0.6 * this.mbps + 0.4 * mbps;
+    this.retier();
+  }
+
+  private note(
+    kind: "intro" | "trip",
+    set: TripSet,
+    out: "video" | "fade" | "error" | "skipped",
+    ms: number,
+    url: string,
+    stalls: number,
+  ) {
+    const bytes = this.sizes.get(url);
+    this.metrics.record({
+      kind,
+      codec: codecName(set.type),
+      tier: set.lite ? "normal" : "lite", // only normal sets carry their lite twin
+      out,
+      waitMs: Math.round(ms),
+      kb: bytes ? Math.round(bytes / 1000) : null,
+      stalls,
+      mbps: this.mbps == null ? null : Math.round(this.mbps * 10) / 10,
+    });
   }
 
   /**
    * The device does not really play the current encoding (it said it could): switch to the fallback for good.
-   * Returns the same trip in the fallback, or undefined when already there.
+   * Returns the same trip in the fallback (same tier), or undefined when already there.
    */
   private downgrade(url: string) {
     const old = this.enc;
     const fallback = this.o.encodings[this.o.encodings.length - 1];
-    if (old === fallback) return;
-    this.enc = fallback;
+    if (this.codec === fallback) return;
+    this.codec = fallback;
+    this.applyTier();
+    const now = this.enc;
     this.prefetchGen++; // stop the background queue of the old encoding
     for (const [u, d] of this.downloads) if (!this.ready.has(u)) d.abort.abort();
-    if (url === old.intro) return fallback.intro;
+    if (url === old.intro) return now.intro;
     const i = old.trips.indexOf(url);
-    if (i >= 0) return fallback.trips[i];
+    if (i >= 0) return now.trips[i];
     const j = old.backs.indexOf(url);
-    return j >= 0 ? fallback.backs[j] : undefined;
+    return j >= 0 ? now.backs[j] : undefined;
   }
 
   /** One chapter forward (1) or back (-1). Returns false only for forward on the last chapter. */
@@ -259,6 +370,7 @@ export class TourController {
     const nextIdx = this.cur === 0 ? 1 : 0;
     const d: Drag = {
       my, target: c + dir, v: this.o.videos[nextIdx], progress: 0, prepared: false, released: null, reseek: false,
+      url, set: this.enc,
     };
     this.drag = d;
     this.set({ moving: true, target: c + dir, settling: false });
@@ -350,9 +462,14 @@ export class TourController {
       if (d.my === this.token) await this.arrive(d.target, d.my, true);
       return;
     }
+    this.stalls = 0;
     this.settleNear(v, d.my);
     const stalled = await ended;
-    if (d.my === this.token) await this.arrive(d.target, d.my, stalled);
+    if (d.my === this.token) {
+      // Dragging needs the trip downloaded already, so it never waited: it counts as a trip that played.
+      this.note("trip", d.set, stalled ? "error" : "video", 0, d.url, this.stalls);
+      await this.arrive(d.target, d.my, stalled);
+    }
   }
 
   /** Spring back to frame 0 by seeking (ease out, 0.2 to 0.6 s), then rest on the still of origin. */
@@ -385,12 +502,15 @@ export class TourController {
       v.load();
     }
     this.objectUrls.forEach((u) => URL.revokeObjectURL(u));
+    this.metrics.destroy();
   }
 
   // ---- trips ----
 
   private async play(url: string, target: number, startAt: number) {
     const my = ++this.token;
+    const began = performance.now();
+    const set = this.enc; // the tier this trip is asked in, for the measurements
     this.set({ moving: true, target, settling: false });
     // Blob video works: the whole trip must be downloaded, and only a short wait is acceptable. Otherwise the video
     // element loads it directly (once), with the same limit inside load().
@@ -406,7 +526,11 @@ export class TourController {
       const inTime = await Promise.race([got, delay(TRIP_WAIT).then(() => false)]);
       waiting = false;
       if (my !== this.token || !this.alive) return;
-      if (!inTime) return void (await this.arrive(target, my, true)); // crossfade; the download carries on
+      if (!inTime) {
+        // crossfade; the download carries on
+        this.note(url === set.intro ? "intro" : "trip", set, "fade", performance.now() - began, url, 0);
+        return void (await this.arrive(target, my, true));
+      }
     }
 
     // Prepare the hidden video (source, position), then swap it in on its first painted frame.
@@ -416,7 +540,11 @@ export class TourController {
     const loaded = await this.load(v, url);
     if (my !== this.token) return;
     this.set({ loading: null });
-    if (!loaded) return void (await this.arrive(target, my, true)); // the video will not play: crossfade instead
+    if (!loaded) {
+      // the video will not play: crossfade instead
+      this.note(url === set.intro ? "intro" : "trip", set, "error", performance.now() - began, url, 0);
+      return void (await this.arrive(target, my, true));
+    }
     if (Math.abs(v.currentTime - startAt) > 0.01) {
       v.currentTime = startAt;
       await media(v, "seeked", 3000).catch(() => {});
@@ -451,9 +579,14 @@ export class TourController {
     old.pause();
     this.cur = nextIdx;
     this.settleNear(v, my);
+    const shownAfter = performance.now() - began;
+    this.stalls = 0; // only what happens while it plays counts, not the seek that positioned it
 
     const stalled = await ended;
-    if (my === this.token) await this.arrive(target, my, stalled);
+    if (my === this.token) {
+      this.note(url === set.intro ? "intro" : "trip", set, stalled ? "error" : "video", shownAfter, url, this.stalls);
+      await this.arrive(target, my, stalled);
+    }
   }
 
   /**
@@ -535,6 +668,7 @@ export class TourController {
     if (my !== this.token) return;
     this.hideVideos(false);
     this.set({ chapter: target, moving: false, target, settling: false, loading: null });
+    this.retier(); // at rest: the next trips are asked in the tier the connection can carry
     this.prefetchAround(target);
     const queued = this.pending;
     this.pending = 0;
@@ -631,28 +765,50 @@ export class TourController {
     if (!d) {
       const ctrl = new AbortController();
       this.aborts.push(ctrl);
-      const entry: Download = { progress: null, listeners: new Set(), promise: Promise.resolve(""), abort: ctrl };
+      const entry: Download = {
+        progress: null,
+        listeners: new Set(),
+        promise: Promise.resolve(""),
+        abort: ctrl,
+        background: !onProgress,
+      };
       entry.promise = (async () => {
         const r = await fetch(url, { signal: ctrl.signal });
         if (!r.ok) throw new Error(`http ${r.status}`);
         const total = Number(r.headers.get("Content-Length")) || 0;
+        const t0 = performance.now(); // headers are in: what follows is transfer time, not latency
+        let got = 0;
+        let lastSample = 0;
         let blob: Blob;
-        if (!r.body || !total) {
-          blob = await r.blob();
-        } else {
-          const reader = r.body.getReader();
-          const chunks: Uint8Array[] = [];
-          let got = 0;
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            got += value.length;
-            entry.progress = Math.min(1, got / total);
-            entry.listeners.forEach((l) => l(entry.progress));
+        try {
+          if (!r.body || !total) {
+            blob = await r.blob();
+            got = blob.size;
+          } else {
+            const reader = r.body.getReader();
+            const chunks: Uint8Array[] = [];
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              got += value.length;
+              entry.progress = Math.min(1, got / total);
+              entry.listeners.forEach((l) => l(entry.progress));
+              // The speed is known while the file arrives, not only when it is over: a slow connection must not
+              // keep pulling heavy trips for the time one of them needs.
+              const elapsed = performance.now() - t0;
+              if (elapsed - lastSample >= 1000) {
+                lastSample = elapsed;
+                this.measure(got, elapsed);
+              }
+            }
+            blob = new Blob(chunks as BlobPart[], { type: "video/mp4" });
           }
-          blob = new Blob(chunks as BlobPart[], { type: "video/mp4" });
+        } finally {
+          // Even a download cut short (an intro nobody waited for) says how fast the connection is.
+          this.measure(got, performance.now() - t0);
         }
+        this.sizes.set(url, blob.size);
         const objectUrl = URL.createObjectURL(blob);
         this.objectUrls.push(objectUrl);
         this.ready.set(url, objectUrl);
@@ -663,6 +819,7 @@ export class TourController {
       d = entry;
     }
     if (onProgress) {
+      d.background = false;
       const entry = d;
       entry.listeners.add(onProgress);
       onProgress(entry.progress);
