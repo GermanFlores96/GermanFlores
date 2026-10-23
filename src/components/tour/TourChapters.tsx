@@ -134,35 +134,56 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
       step(dy > 0 ? 1 : -1);
     };
 
-    // One wheel gesture = one step: a new gesture needs a short pause, and steps are at least 900 ms apart,
-    // so trackpad inertia never skips scenes. A gesture that began while the page was scrolled (coming back up from
-    // the sections) belongs to the page until it ends, so its inertia does not step back through the chapters.
+    // One wheel gesture = one step, however long it runs: a gesture is a run of wheel events with no pause of 220 ms
+    // or more (a hard spin of the wheel and the inertia of a trackpad are one gesture), and it moves the tour once.
+    // Counting a step every so often inside a long gesture used to run through the chapters, and out of the tour,
+    // on crossfades before their trips had even arrived. A new gesture right after a step (under 900 ms) is still
+    // the inertia of the previous one. A gesture that began while the page was scrolled (coming back up from the
+    // sections) belongs to the page until it ends, so its inertia does not step back through the chapters.
     let lastWheel = 0;
     let lastStep = 0;
     let ownGesture = false;
+    let stepped = false;
     const onWheel = (e: WheelEvent) => {
       if (e.ctrlKey) return; // pinch zoom
       const now = performance.now();
-      const newGesture = now - lastWheel > 220;
+      if (now - lastWheel > 220) {
+        ownGesture = window.scrollY <= 4;
+        stepped = false;
+      }
       lastWheel = now;
-      if (newGesture) ownGesture = window.scrollY <= 4;
       if (!ownGesture || window.scrollY > 4) return; // let the page scroll normally while the tour is not fully in view
       e.preventDefault();
-      if (Math.abs(e.deltaY) < 8 || (!newGesture && now - lastStep < 900)) return;
+      if (stepped || Math.abs(e.deltaY) < 8) return;
+      stepped = true;
+      if (now - lastStep < 900) return;
       lastStep = now;
       step(e.deltaY > 0 ? 1 : -1);
     };
+
+    // While the tour is the whole screen the page itself must not scroll: a wheel event that arrives late (the page
+    // is busy playing a trip), the End key or the scrollbar would otherwise carry the visitor past the tour. The tour
+    // moves by its own gestures and leaves through leave() (scripts can still scroll a locked page).
+    const root = document.documentElement;
+    const lock = () => {
+      const y = window.scrollY;
+      if (y > 0 && y <= 4) window.scrollTo({ top: 0, behavior: "instant" });
+      if (desktop) root.classList.toggle("tour-lock", y <= 4);
+    };
+    lock();
+    window.addEventListener("scroll", lock, { passive: true });
 
     const onKey = (e: KeyboardEvent) => {
       if (window.scrollY > 4 || e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement | null;
       if (t && t.closest("input, textarea, select, button, a, [contenteditable]")) return;
+      // A held key repeats: it must not run through the chapters.
       if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
         e.preventDefault();
-        step(1);
+        if (!e.repeat) step(1);
       } else if (e.key === "ArrowUp" || e.key === "PageUp") {
         e.preventDefault();
-        step(-1);
+        if (!e.repeat) step(-1);
       }
     };
 
@@ -180,6 +201,8 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
       el.removeEventListener("touchcancel", onTouchEnd);
       window.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", lock);
+      root.classList.remove("tour-lock");
     };
   }, [active, desktop]);
 
