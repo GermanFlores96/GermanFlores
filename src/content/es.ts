@@ -2,9 +2,9 @@ import type { Dictionary } from "./types";
 
 export const es: Dictionary = {
   meta: {
-    title: "German Flores · Senior Software Engineer · Móvil, web e IA",
+    title: "Germán Flores · Senior Software Engineer · Móvil, web e IA",
     description:
-      "Ingeniero de software con más de 9 años construyendo software seguro en fintech, banca y pagos: apps para iOS y Android, web con Next.js y herramientas con agentes de IA.",
+      "Germán Flores, ingeniero de software en Caracas con más de 9 años creando apps seguras para banca y pagos (iOS y Android), web con Next.js y agentes de IA.",
     ogLocale: "es_VE",
     ogLine: "Móvil, web e IA",
   },
@@ -48,7 +48,7 @@ export const es: Dictionary = {
     scenes: [
       {
         label: "Estudio",
-        eyebrow: "Senior Software Engineer · Móvil, web e IA",
+        eyebrow: "Germán Flores · Senior Software Engineer",
         title: "Software seguro, a la velocidad de la IA.",
         body: "Más de 9 años construyendo software donde importan los datos y el dinero: apps para iOS y Android, web con Next.js y agentes de IA.",
         tags: ["iOS y Android", "React Native", "Next.js", "IA aplicada"],
@@ -217,7 +217,7 @@ export const es: Dictionary = {
     eyebrow: "Sobre mí",
     title: "Software para lo que no puede fallar.",
     paragraphs: [
-      "Soy ingeniero en informática. Llevo más de 9 años construyendo software para banca, sobre todo apps para iOS y Android, donde un error cuesta dinero y la seguridad no se negocia.",
+      "Soy Germán Flores, ingeniero en informática. Llevo más de 9 años construyendo software para banca, sobre todo apps para iOS y Android, donde un error cuesta dinero y la seguridad no se negocia.",
       "Esa disciplina la llevo ahora a otros terrenos: tiendas en línea con Next.js, apps con React Native y herramientas de IA que me ayudan a construir más rápido sin perder el criterio. He guiado equipos con Scrum y Kanban, y me gusta resolver los problemas técnicos que otros prefieren evitar.",
     ],
     facts: [
@@ -225,7 +225,7 @@ export const es: Dictionary = {
       { label: "Idiomas", value: "Español nativo · Inglés profesional" },
       { label: "Enfoque", value: "Móvil, web e IA aplicada" },
     ],
-    photoAlt: "Retrato de German Flores, sonriendo, con barba corta y camisa negra.",
+    photoAlt: "Retrato de Germán Flores, sonriendo, con barba corta y camisa negra.",
   },
   contact: {
     eyebrow: "Contacto",
@@ -236,7 +236,7 @@ export const es: Dictionary = {
     availability: "Abierto a conversar",
   },
   footer: {
-    rights: "German Flores. Todos los derechos reservados.",
+    rights: "Germán Flores. Todos los derechos reservados.",
     privacy: "Este sitio no usa cookies ni analítica.",
     backToTop: "Volver arriba",
   },

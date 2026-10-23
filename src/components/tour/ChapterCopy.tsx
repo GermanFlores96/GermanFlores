@@ -9,19 +9,22 @@ type Props = {
   /** Only the last chapter gets actions: it must lead on to the profile, not read as the end. */
   cta?: { primary: string; secondary: string; email: string };
   compact?: boolean;
+  /** The eyebrow becomes the page's h1 (first chapter: it carries the person's name). Looks the same. */
+  heading?: boolean;
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-export function ChapterCopy({ scene, index, total, accent, cta, compact = false }: Props) {
+export function ChapterCopy({ scene, index, total, accent, cta, compact = false, heading = false }: Props) {
+  const Eyebrow = heading ? "h1" : "span";
   return (
     <div className="flex flex-col">
       <span className="text-muted font-mono text-xs">
         {pad(index + 1)} / {pad(total)}
       </span>
-      <span className="mt-4 text-sm font-semibold" style={{ color: accent }}>
+      <Eyebrow className="mt-4 text-sm font-semibold" style={{ color: accent }}>
         {scene.eyebrow}
-      </span>
+      </Eyebrow>
       <h2
         className={`mt-2 bg-linear-to-r from-white to-[#9b9b9b] bg-clip-text font-semibold tracking-tight text-transparent ${
           compact ? "text-4xl leading-10" : "text-4xl leading-10 xl:text-6xl xl:leading-none"

@@ -2,9 +2,9 @@ import type { Dictionary } from "./types";
 
 export const en: Dictionary = {
   meta: {
-    title: "German Flores · Senior Software Engineer · Mobile, web and AI",
+    title: "Germán Flores · Senior Software Engineer · Mobile, web and AI",
     description:
-      "Software engineer with 9+ years building secure software in fintech, banking and payments: iOS and Android apps, web with Next.js and tools with AI agents.",
+      "Germán Flores, software engineer in Caracas with 9+ years building secure banking and payments apps (iOS and Android), web with Next.js and AI agents.",
     ogLocale: "en_US",
     ogLine: "Mobile, web and AI",
   },
@@ -47,7 +47,7 @@ export const en: Dictionary = {
     scenes: [
       {
         label: "Studio",
-        eyebrow: "Senior Software Engineer · Mobile, web and AI",
+        eyebrow: "Germán Flores · Senior Software Engineer",
         title: "Secure software, at AI speed.",
         body: "9+ years building software where data and money matter: iOS and Android apps, web with Next.js and AI agents.",
         tags: ["iOS and Android", "React Native", "Next.js", "Applied AI"],
@@ -216,7 +216,7 @@ export const en: Dictionary = {
     eyebrow: "About",
     title: "Software for what cannot fail.",
     paragraphs: [
-      "I am a computer engineer. I have spent more than 9 years building software for banking, mostly iOS and Android apps, where a mistake costs money and security is not negotiable.",
+      "I am Germán Flores, a computer engineer. I have spent more than 9 years building software for banking, mostly iOS and Android apps, where a mistake costs money and security is not negotiable.",
       "I now bring that discipline to other ground: online stores with Next.js, apps with React Native and AI tools that help me build faster without losing judgment. I have guided teams with Scrum and Kanban, and I like solving the technical problems others prefer to avoid.",
     ],
     facts: [
@@ -224,7 +224,7 @@ export const en: Dictionary = {
       { label: "Languages", value: "Native Spanish · Professional English" },
       { label: "Focus", value: "Mobile, web and applied AI" },
     ],
-    photoAlt: "Portrait of German Flores, smiling, with a short beard and a black shirt.",
+    photoAlt: "Portrait of Germán Flores, smiling, with a short beard and a black shirt.",
   },
   contact: {
     eyebrow: "Contact",
@@ -235,7 +235,7 @@ export const en: Dictionary = {
     availability: "Open to a conversation",
   },
   footer: {
-    rights: "German Flores. All rights reserved.",
+    rights: "Germán Flores. All rights reserved.",
     privacy: "This site uses no cookies and no analytics.",
     backToTop: "Back to top",
   },

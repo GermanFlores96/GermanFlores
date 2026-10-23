@@ -272,6 +272,7 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
               total={scenes.length}
               accent={scenes[i].accent}
               compact={!desktop}
+              heading={i === 0}
               cta={i === LAST ? { ...flight.finalCta, email } : undefined}
             />
           </div>

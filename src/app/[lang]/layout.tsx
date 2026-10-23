@@ -28,7 +28,8 @@ export async function generateMetadata({ params }: LayoutProps<"/[lang]">): Prom
     description: meta.description,
     alternates: {
       canonical: `/${lang}`,
-      languages: { es: "/es", en: "/en", "x-default": "/es" },
+      // x-default is the root: it redirects each visitor to their language (src/proxy.ts).
+      languages: { es: "/es", en: "/en", "x-default": "/" },
     },
     openGraph: {
       type: "website",
@@ -52,32 +53,47 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
   if (!hasLocale(lang)) notFound();
   const { meta, nav, career } = getDictionary(lang);
 
-  // A profile page about one person (schema.org ProfilePage, as Google recommends for personal sites).
+  // One graph: the site (its name is what search engines show for the domain), a profile page about one person
+  // (schema.org ProfilePage, as Google recommends for personal sites) and that person, linked by @id.
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? site.url;
+  const website = {
+    "@type": "WebSite",
+    "@id": `${base}/#website`,
+    url: base,
+    name: site.name,
+    alternateName: [site.alternateName, "germanflores.dev"],
+    inLanguage: locales,
+    publisher: { "@id": `${base}/#person` },
+  };
   const person = {
     "@type": "Person",
     "@id": `${base}/#person`,
     name: site.name,
+    givenName: "Germán",
+    familyName: "Flores",
     alternateName: site.alternateName,
     url: base,
-    image: `${base}${site.photo}`,
+    mainEntityOfPage: `${base}/${lang}`,
+    image: { "@type": "ImageObject", url: `${base}${site.photo}`, width: 960, height: 1200 },
     jobTitle: nav.brandRole,
     description: meta.description,
     email: `mailto:${site.email}`,
-    sameAs: [site.linkedin],
+    sameAs: site.profiles,
     address: { "@type": "PostalAddress", addressLocality: "Caracas", addressCountry: "VE" },
     alumniOf: career.education.map((e) => ({ "@type": "EducationalOrganization", name: e.school })),
     knowsAbout: site.knowsAbout,
   };
   const profile = {
-    "@context": "https://schema.org",
     "@type": "ProfilePage",
+    "@id": `${base}/${lang}#profile`,
     url: `${base}/${lang}`,
     name: meta.title,
     inLanguage: lang,
     dateModified: site.updated,
-    mainEntity: person,
+    isPartOf: { "@id": `${base}/#website` },
+    mainEntity: { "@id": `${base}/#person` },
   };
+  const graph = { "@context": "https://schema.org", "@graph": [website, profile, person] };
 
   return (
     <html lang={lang} className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
@@ -86,7 +102,7 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
         <VersionCheck />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(profile) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(graph) }}
         />
       </body>
     </html>

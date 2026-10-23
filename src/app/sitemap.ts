@@ -8,7 +8,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${base}/${lang}`,
     lastModified: site.updated,
     alternates: {
-      languages: Object.fromEntries(locales.map((l) => [l, `${base}/${l}`])),
+      languages: { ...Object.fromEntries(locales.map((l) => [l, `${base}/${l}`])), "x-default": base },
     },
   }));
 }

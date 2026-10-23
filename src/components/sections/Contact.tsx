@@ -28,7 +28,7 @@ export function Contact({ copy }: { copy: Dictionary["contact"] }) {
             <a
               href={site.linkedin}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="me noopener noreferrer"
               className="border-line hover:bg-ink/10 inline-flex min-h-12 items-center gap-2 rounded-lg border px-3 py-2 text-base font-semibold transition-all duration-700 ease-fluid hover:-translate-y-0.5 active:scale-[0.98]"
             >
               <LinkedinLogo size={20} aria-hidden />

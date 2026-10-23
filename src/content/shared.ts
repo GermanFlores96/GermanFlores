@@ -1,16 +1,21 @@
 // Language independent data: contact links, media paths, pacing and accents of the flight.
+const linkedin = "https://www.linkedin.com/in/german-flores-0a7837156";
+
 export const site = {
-  name: "German Flores",
-  alternateName: "Germán Flores", // how many people will type it
+  name: "Germán Flores", // with the accent: it is how the name is searched and written
+  alternateName: "German Flores", // how an English keyboard types it
   url: "https://germanflores.dev",
   legacyHost: "germanflores.vercel.app", // first address of the site: redirects here (src/proxy.ts)
   email: "jflcgerman@gmail.com",
-  linkedin: "https://www.linkedin.com/in/german-flores-0a7837156",
+  linkedin,
+  // Public profiles that link back to this site: they feed Person.sameAs. Add each one as it goes live, and only
+  // after it links to germanflores.dev (a sameAs nobody confirms is worth nothing).
+  profiles: [linkedin],
   year: 2026,
   photo: "/img/german.webp",
   // Last content change, for the sitemap and the structured data. Bump it when the copy changes, not on every deploy:
   // search engines stop trusting a date that is always today.
-  updated: "2026-10-19",
+  updated: "2026-10-23",
   // Structured data (Person.knowsAbout): what search engines should associate the name with.
   knowsAbout: ["React Native", "Next.js", "TypeScript", "iOS", "Android", "Mobile security", "Fintech", "AI agents"],
 } as const;

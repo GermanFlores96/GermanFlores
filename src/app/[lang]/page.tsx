@@ -10,7 +10,7 @@ import { Footer } from "@/components/sections/Footer";
 import { Stack } from "@/components/sections/Stack";
 import { TaglineReveal } from "@/components/ui/TaglineReveal";
 import { getDictionary } from "@/content/dictionaries";
-import { site, TOUR } from "@/content/shared";
+import { DESKTOP_TOUR, site, TOUR } from "@/content/shared";
 import { hasLocale } from "@/content/types";
 
 export default async function Page({ params }: PageProps<"/[lang]">) {
@@ -34,9 +34,12 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
       />
 
       <main id="top">
-        <h1 className="sr-only">
-          {site.name}, {dict.nav.brandRole}
-        </h1>
+        {/* The chapter tour shows the name as its own h1 (first chapter); the fallback tours have none. */}
+        {TOUR !== "chapters" || DESKTOP_TOUR !== "chapters" ? (
+          <h1 className="sr-only">
+            {site.name}, {dict.nav.brandRole}
+          </h1>
+        ) : null}
 
         {TOUR === "chapters" ? (
           <Tour flight={dict.flight} email={site.email} />
