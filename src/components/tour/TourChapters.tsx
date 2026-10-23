@@ -63,9 +63,31 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
     if (!active || !el) return;
 
     const contenido = () => document.getElementById("contenido");
+    // Never touch the scroll position from here: a smooth scroll that leaves the tour starts with a few pixels, and
+    // setting the position then would cancel it (the tour could not be left).
+    const root = document.documentElement;
+    let leaving = false;
+    let leavingTimer = 0;
+    const lock = () => {
+      const y = window.scrollY;
+      if (leaving) {
+        if (y <= 4) return; // the trip out has not started moving yet
+        leaving = false;
+      }
+      if (desktop) root.classList.toggle("tour-lock", y <= 4);
+    };
+
     const leave = () => {
       const target = contenido();
-      if (target) window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+      if (!target) return;
+      leaving = true; // the page is free to scroll until it has left
+      root.classList.remove("tour-lock");
+      window.clearTimeout(leavingTimer);
+      leavingTimer = window.setTimeout(() => {
+        leaving = false;
+        lock();
+      }, 2000);
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
     };
     const step = (dir: 1 | -1) => {
       const c = ctrl.current;
@@ -164,12 +186,6 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
     // While the tour is the whole screen the page itself must not scroll: a wheel event that arrives late (the page
     // is busy playing a trip), the End key or the scrollbar would otherwise carry the visitor past the tour. The tour
     // moves by its own gestures and leaves through leave() (scripts can still scroll a locked page).
-    const root = document.documentElement;
-    const lock = () => {
-      const y = window.scrollY;
-      if (y > 0 && y <= 4) window.scrollTo({ top: 0, behavior: "instant" });
-      if (desktop) root.classList.toggle("tour-lock", y <= 4);
-    };
     lock();
     window.addEventListener("scroll", lock, { passive: true });
 
@@ -202,6 +218,7 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
       window.removeEventListener("wheel", onWheel);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", lock);
+      window.clearTimeout(leavingTimer);
       root.classList.remove("tour-lock");
     };
   }, [active, desktop]);
