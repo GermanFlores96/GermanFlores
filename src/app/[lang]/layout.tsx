@@ -89,7 +89,8 @@ export default async function RootLayout({ children, params }: LayoutProps<"/[la
     url: `${base}/${lang}`,
     name: meta.title,
     inLanguage: lang,
-    dateModified: site.updated,
+    // Google wants a full ISO 8601 date and time with offset; a bare date is flagged as invalid (Caracas is UTC-4).
+    dateModified: `${site.updated}T00:00:00-04:00`,
     isPartOf: { "@id": `${base}/#website` },
     mainEntity: { "@id": `${base}/#person` },
   };
