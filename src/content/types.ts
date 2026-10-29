@@ -65,6 +65,38 @@ export type Dictionary = {
     labels: { challenge: string; work: string; result: string };
     items: CaseCopy[];
   };
+  // Fixed texts of the projects section; each project's own texts live in src/content/projects/.
+  projects: {
+    eyebrow: string;
+    title: string;
+    intro: string;
+    all: string;
+    open: string;
+    visit: string;
+    statuses: { live: string; beta: string; building: string };
+    kinds: { client: string; own: string };
+    code: { private: string; public: string };
+    labels: {
+      problem: string;
+      work: string;
+      decisions: string;
+      result: string;
+      details: string;
+      role: string;
+      type: string;
+      year: string;
+      status: string;
+      site: string;
+      code: string;
+      stack: string;
+    };
+    devices: { desktop: string; mobile: string };
+    gallery: string;
+    home: string;
+    prev: string;
+    next: string;
+    index: { title: string; intro: string; metaTitle: string; metaDescription: string };
+  };
   stack: {
     eyebrow: string;
     title: string;
@@ -79,6 +111,7 @@ export type Dictionary = {
       period: string;
       place: string;
       points: string[];
+      link?: { href: string; label: string };
     }[];
     educationTitle: string;
     education: { school: string; period: string; degree: string }[];

@@ -1,4 +1,5 @@
 import type { Dictionary } from "./types";
+import { projectsPath } from "./projects/paths";
 
 export const en: Dictionary = {
   meta: {
@@ -12,6 +13,7 @@ export const en: Dictionary = {
     brandRole: "Senior Software Engineer",
     links: [
       { id: "casos", label: "Work" },
+      { id: "proyectos", label: "Projects" },
       { id: "stack", label: "Stack" },
       { id: "trayectoria", label: "Experience" },
       { id: "sobre-mi", label: "About" },
@@ -131,8 +133,46 @@ export const en: Dictionary = {
       },
     ],
   },
+  projects: {
+    eyebrow: "Projects",
+    title: "Software in production.",
+    intro: "Projects I built from start to finish that real people use today.",
+    all: "See all projects",
+    open: "See the project",
+    visit: "Visit",
+    statuses: { live: "Live", beta: "In beta", building: "In development" },
+    kinds: { client: "Client project", own: "Own project" },
+    code: { private: "Private code · live project", public: "See the code" },
+    labels: {
+      problem: "The problem",
+      work: "What I built",
+      decisions: "Technical decisions",
+      result: "The result",
+      details: "Project details",
+      role: "My role",
+      type: "Type",
+      year: "Year",
+      status: "Status",
+      site: "Site",
+      code: "Code",
+      stack: "Stack",
+    },
+    devices: { desktop: "on desktop", mobile: "on a phone" },
+    gallery: "Screenshots",
+    home: "Home",
+    prev: "Previous project",
+    next: "Next project",
+    index: {
+      title: "Projects in production.",
+      intro:
+        "Stores, apps and tools I designed and built from start to finish. Each one covers the problem, what I built and the technical decisions behind it.",
+      metaTitle: "Germán Flores projects · Software in production",
+      metaDescription:
+        "Software projects by Germán Flores in production: stores, apps and tools built with Next.js, React Native, Supabase and applied AI.",
+    },
+  },
   stack: {
-    eyebrow: "Stack and skills",
+    eyebrow:"Stack and skills",
     title: "What I build with.",
     groups: [
       {
@@ -188,6 +228,7 @@ export const en: Dictionary = {
           "PWA that analyses food with Gemini vision and answers in under 4 seconds, with history stored on the phone itself.",
           "Makeup store built with AI agents guided by specs, with automated and accessibility tests.",
         ],
+        link: { href: projectsPath("en"), label: "See the projects in production" },
       },
       {
         role: "Development specialist",

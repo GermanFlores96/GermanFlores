@@ -20,6 +20,10 @@ npm start        # servir la build (puerto 3000)
 | Wrapper React del motor | `src/components/scroll-world/ScrollWorld.tsx` |
 | Secciones de la página | `src/components/sections/` |
 | Redirección de idioma | `src/proxy.ts` |
+| Proyectos (un archivo por proyecto, ES/EN dentro) | `src/content/projects/` (plantilla: `_plantilla.ts`) |
+| Páginas de proyectos (`/es/proyectos`, `/en/projects`) | `src/app/[lang]/proyectos/`, `src/app/[lang]/projects/`, componentes en `src/components/projects/` |
+| Datos estructurados (JSON-LD) | `src/content/structured-data.ts` |
+| Capturas de proyectos | `public/img/projects/<slug>/<versión>/`, generadas con `node sw-work/scripts/capturar_proyecto.mjs` (desde `sw-work/`) |
 | Estilos, paleta y ajustes del motor para tema oscuro | `src/app/globals.css` |
 | Videos (escritorio 720p ≈ 33 MB; móvil 9:16 ≈ 31 MB) y pósteres | `public/vid/v1/`, `public/img/v1/scenes/` |
 

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { getProject } from "@/content/projects";
 import { site } from "@/content/shared";
 import { defaultLocale, locales, type Locale } from "@/content/types";
 
@@ -26,6 +27,13 @@ export function proxy(request: NextRequest) {
   // Links shared before the custom domain keep working: same path on the domain, permanently.
   if (request.headers.get("host") === site.legacyHost) {
     return NextResponse.redirect(new URL(pathname + search, site.url), 308);
+  }
+
+  // An unknown project slug renders on demand and its first response went out as 200 before notFound() ran.
+  // Sending it to the catch-all gives a real 404 from the first visit.
+  const project = pathname.match(/^\/(es|en)\/(?:proyectos|projects)\/([^/]+)\/?$/);
+  if (project && !getProject(project[2])) {
+    return NextResponse.rewrite(new URL(`/${project[1]}/404`, request.url));
   }
 
   const hasLocale = locales.some(

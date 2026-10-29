@@ -7,16 +7,33 @@ import { Career } from "@/components/sections/Career";
 import { Cases } from "@/components/sections/Cases";
 import { Contact } from "@/components/sections/Contact";
 import { Footer } from "@/components/sections/Footer";
+import { Projects } from "@/components/sections/Projects";
 import { Stack } from "@/components/sections/Stack";
 import { TaglineReveal } from "@/components/ui/TaglineReveal";
 import { getDictionary } from "@/content/dictionaries";
 import { DESKTOP_TOUR, site, TOUR } from "@/content/shared";
+import { graph, personNode, siteBase, websiteNode } from "@/content/structured-data";
 import { hasLocale } from "@/content/types";
 
 export default async function Page({ params }: PageProps<"/[lang]">) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
   const dict = getDictionary(lang);
+
+  // One graph: the site (its name is what search engines show for the domain), a profile page about one person
+  // (schema.org ProfilePage, as Google recommends for personal sites) and that person, linked by @id.
+  const base = siteBase();
+  const profile = {
+    "@type": "ProfilePage",
+    "@id": `${base}/${lang}#profile`,
+    url: `${base}/${lang}`,
+    name: dict.meta.title,
+    inLanguage: lang,
+    // Google wants a full ISO 8601 date and time with offset; a bare date is flagged as invalid (Caracas is UTC-4).
+    dateModified: `${site.updated}T00:00:00-04:00`,
+    isPartOf: { "@id": `${base}/#website` },
+    mainEntity: { "@id": `${base}/#person` },
+  };
 
   return (
     <>
@@ -65,6 +82,7 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
             </div>
           </section>
           <Cases copy={dict.cases} />
+          <Projects lang={lang} copy={dict.projects} />
           <Stack copy={dict.stack} />
           <Career copy={dict.career} />
           <About copy={dict.about} />
@@ -72,6 +90,10 @@ export default async function Page({ params }: PageProps<"/[lang]">) {
           <Footer lang={lang} copy={dict.footer} />
         </div>
       </main>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: graph([websiteNode(), profile, personNode(lang)]) }}
+      />
     </>
   );
 }

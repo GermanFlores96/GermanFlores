@@ -15,7 +15,7 @@ export const site = {
   photo: "/img/german.webp",
   // Last content change, for the sitemap and the structured data. Bump it when the copy changes, not on every deploy:
   // search engines stop trusting a date that is always today.
-  updated: "2026-10-24",
+  updated: "2026-10-29",
   // Structured data (Person.knowsAbout): what search engines should associate the name with.
   knowsAbout: ["React Native", "Next.js", "TypeScript", "iOS", "Android", "Mobile security", "Fintech", "AI agents"],
 } as const;

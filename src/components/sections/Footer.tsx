@@ -3,7 +3,16 @@ import { CaretUp } from "@phosphor-icons/react/ssr";
 import { site } from "@/content/shared";
 import type { Dictionary, Locale } from "@/content/types";
 
-export function Footer({ lang, copy }: { lang: Locale; copy: Dictionary["footer"] }) {
+// `alternate`: the same page in the other language, on pages other than the home.
+export function Footer({
+  lang,
+  copy,
+  alternate,
+}: {
+  lang: Locale;
+  copy: Dictionary["footer"];
+  alternate?: string;
+}) {
   const other: Locale = lang === "es" ? "en" : "es";
   return (
     <footer className="border-line border-t px-6 py-12">
@@ -16,7 +25,7 @@ export function Footer({ lang, copy }: { lang: Locale; copy: Dictionary["footer"
         </div>
         <div className="flex items-center gap-6 text-sm font-semibold">
           <Link
-            href={`/${other}`}
+            href={alternate ?? `/${other}`}
             hrefLang={other}
             className="text-muted hover:text-ink transition-all duration-700 ease-fluid"
           >

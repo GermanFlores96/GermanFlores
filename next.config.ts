@@ -55,6 +55,8 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: securityHeaders },
       { source: "/vid/:version/:file*", headers: immutable },
       { source: "/img/:version/scenes/:file*", headers: immutable },
+      // Project screenshots follow the same rule: new screenshots go to a new version folder (src/content/projects).
+      { source: "/img/projects/:slug/:version/:file*", headers: immutable },
       // The version endpoint is what open tabs ask to learn whether a newer deployment exists: never cached.
       { source: "/version", headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }] },
     ];

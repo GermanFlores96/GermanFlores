@@ -1,4 +1,5 @@
 import type { Dictionary } from "./types";
+import { projectsPath } from "./projects/paths";
 
 export const es: Dictionary = {
   meta: {
@@ -12,6 +13,7 @@ export const es: Dictionary = {
     brandRole: "Senior Software Engineer",
     links: [
       { id: "casos", label: "Casos" },
+      { id: "proyectos", label: "Proyectos" },
       { id: "stack", label: "Stack" },
       { id: "trayectoria", label: "Trayectoria" },
       { id: "sobre-mi", label: "Sobre mí" },
@@ -132,6 +134,44 @@ export const es: Dictionary = {
       },
     ],
   },
+  projects: {
+    eyebrow: "Proyectos",
+    title: "Software en producción.",
+    intro: "Proyectos que construí de punta a punta y que hoy usan personas reales.",
+    all: "Ver todos los proyectos",
+    open: "Ver el proyecto",
+    visit: "Visitar",
+    statuses: { live: "En producción", beta: "En beta", building: "En desarrollo" },
+    kinds: { client: "Proyecto para cliente", own: "Proyecto propio" },
+    code: { private: "Código privado · proyecto en producción", public: "Ver el código" },
+    labels: {
+      problem: "El problema",
+      work: "Lo que construí",
+      decisions: "Decisiones técnicas",
+      result: "El resultado",
+      details: "Ficha del proyecto",
+      role: "Mi papel",
+      type: "Tipo",
+      year: "Año",
+      status: "Estado",
+      site: "Sitio",
+      code: "Código",
+      stack: "Stack",
+    },
+    devices: { desktop: "en escritorio", mobile: "en el teléfono" },
+    gallery: "Capturas",
+    home: "Inicio",
+    prev: "Proyecto anterior",
+    next: "Proyecto siguiente",
+    index: {
+      title: "Proyectos en producción.",
+      intro:
+        "Tiendas, apps y herramientas que diseñé y programé de punta a punta. Cada una cuenta el problema, lo que construí y las decisiones técnicas detrás.",
+      metaTitle: "Proyectos de Germán Flores · Software en producción",
+      metaDescription:
+        "Proyectos de software de Germán Flores en producción: tiendas, apps y herramientas con Next.js, React Native, Supabase e IA aplicada.",
+    },
+  },
   stack: {
     eyebrow: "Stack y habilidades",
     title: "Con lo que construyo.",
@@ -189,6 +229,7 @@ export const es: Dictionary = {
           "PWA que analiza la comida con la visión de Gemini y responde en menos de 4 segundos, con historial guardado en el propio teléfono.",
           "Tienda de maquillaje construida con agentes de IA guiados por specs, con pruebas automáticas y de accesibilidad.",
         ],
+        link: { href: projectsPath("es"), label: "Ver los proyectos en producción" },
       },
       {
         role: "Especialista en desarrollo",

@@ -17,9 +17,14 @@ type Props = {
   closeMenu: string;
   languageLabel: string;
   skip: string;
+  // Pages other than the home: section links point to the home page (`/es#casos`), the language switch goes to
+  // the same page in the other language and `current` marks the section the page belongs to.
+  base?: string;
+  alternate?: string;
+  current?: string;
 };
 
-const SECTION_IDS = ["casos", "stack", "trayectoria", "sobre-mi", "contacto"];
+const SECTION_IDS = ["casos", "proyectos", "stack", "trayectoria", "sobre-mi", "contacto"];
 
 export function SiteNav({
   lang,
@@ -32,13 +37,17 @@ export function SiteNav({
   closeMenu,
   languageLabel,
   skip,
+  base = "",
+  alternate,
+  current,
 }: Props) {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState<string | null>(null);
+  const [active, setActive] = useState<string | null>(current ?? null);
   const otherLang: Locale = lang === "es" ? "en" : "es";
 
   // Current section, for aria-current and the highlighted link.
   useEffect(() => {
+    if (current) return;
     const targets = SECTION_IDS.map((id) => document.getElementById(id)).filter(
       (el): el is HTMLElement => el !== null,
     );
@@ -50,9 +59,10 @@ export function SiteNav({
     );
     targets.forEach((el) => io.observe(el));
     return () => io.disconnect();
-  }, []);
+  }, [current]);
 
-  // Menu open: lock page scroll and close on Escape.
+  // Menu open: lock page scroll and close on Escape. Below `lg` the menu replaces the inline links: five links, the
+  // name and the email button do not fit a tablet wide pill.
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
@@ -100,11 +110,11 @@ export function SiteNav({
             </span>
           </Link>
 
-          <ul className="hidden items-center md:flex">
+          <ul className="hidden items-center lg:flex">
             {links.map((link) => (
               <li key={link.id}>
                 <a
-                  href={`#${link.id}`}
+                  href={`${base}#${link.id}`}
                   aria-current={active === link.id ? "true" : undefined}
                   className={linkClass}
                 >
@@ -115,7 +125,7 @@ export function SiteNav({
           </ul>
 
           <Link
-            href={`/${otherLang}`}
+            href={alternate ?? `/${otherLang}`}
             hrefLang={otherLang}
             aria-label={languageLabel}
             className="text-muted hover:text-ink flex min-h-10 items-center gap-1 rounded-full px-2 text-sm font-semibold transition-all duration-700 ease-fluid"
@@ -138,7 +148,7 @@ export function SiteNav({
             aria-controls="menu-movil"
             aria-label={open ? closeMenu : openMenu}
             onClick={() => setOpen((value) => !value)}
-            className="border-line relative size-10 rounded-full border md:hidden"
+            className="border-line relative size-10 rounded-full border lg:hidden"
           >
             <span
               className={`bg-ink absolute top-1/2 left-1/2 block h-0.5 w-4 -translate-x-1/2 rounded-full transition-all duration-700 ease-fluid ${
@@ -158,14 +168,14 @@ export function SiteNav({
         id="menu-movil"
         aria-hidden={!open}
         inert={!open}
-        className={`bg-bg/80 fixed inset-0 z-[390] flex flex-col justify-center gap-4 px-6 backdrop-blur-3xl transition-all duration-700 ease-fluid md:hidden ${
+        className={`bg-bg/80 fixed inset-0 z-[390] flex flex-col justify-center gap-4 px-6 backdrop-blur-3xl transition-all duration-700 ease-fluid lg:hidden ${
           open ? "visible opacity-100" : "invisible opacity-0"
         }`}
       >
         {[...links, { id: "contacto", label: cta }].map((link, i) => (
           <a
             key={link.id}
-            href={`#${link.id}`}
+            href={`${base}#${link.id}`}
             onClick={() => setOpen(false)}
             style={{ transitionDelay: open ? `${100 + i * 50}ms` : "0ms" }}
             className={`text-4xl font-semibold tracking-tight transition-all duration-700 ease-fluid ${

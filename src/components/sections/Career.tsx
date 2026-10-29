@@ -1,4 +1,5 @@
-import { CheckCircle, MapPin } from "@phosphor-icons/react/ssr";
+import Link from "next/link";
+import { ArrowRight, CheckCircle, MapPin } from "@phosphor-icons/react/ssr";
 import { Reveal } from "@/components/ui/Reveal";
 import type { Dictionary } from "@/content/types";
 
@@ -45,6 +46,15 @@ export function Career({ copy }: { copy: Dictionary["career"] }) {
                         </li>
                       ))}
                     </ul>
+                    {job.link ? (
+                      <Link
+                        href={job.link.href}
+                        className="text-violet-soft hover:text-ink mt-8 inline-flex min-h-11 items-center gap-2 text-base font-semibold transition-all duration-700 ease-fluid"
+                      >
+                        {job.link.label}
+                        <ArrowRight size={16} weight="bold" aria-hidden />
+                      </Link>
+                    ) : null}
                   </article>
                 </Reveal>
               </li>
