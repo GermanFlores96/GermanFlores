@@ -50,7 +50,12 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
     });
     ctrl.current = c;
     void c.start();
+    // Out of view (the visitor went to the sections without playing the tour, or after it): rest on the last chapter,
+    // so going back up can go back through the tour, and stop downloading. Back in view: bring the trips in again.
+    const io = new IntersectionObserver(([entry]) => (entry.isIntersecting ? c.resume() : c.park(LAST)));
+    if (stage.current) io.observe(stage.current);
     return () => {
+      io.disconnect();
       c.destroy();
       ctrl.current = null;
       setSt(initial);
@@ -192,7 +197,10 @@ export function TourChapters({ variant, active, prefs, flight, email }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (window.scrollY > 4 || e.altKey || e.ctrlKey || e.metaKey) return;
       const t = e.target as HTMLElement | null;
-      if (t && t.closest("input, textarea, select, button, a, [contenteditable]")) return;
+      if (t && t.closest("input, textarea, select, [contenteditable]")) return;
+      // Buttons and links keep their own keys (space), but the arrows are not theirs: after clicking a chapter dot the
+      // focus stays on it, and the arrows must still move the tour. Only for controls of the tour itself.
+      if (t && t.closest("button, a") && (e.key === " " || !el.contains(t))) return;
       // A held key repeats: it must not run through the chapters.
       if (e.key === "ArrowDown" || e.key === "PageDown" || e.key === " ") {
         e.preventDefault();

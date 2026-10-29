@@ -150,6 +150,9 @@ export class TourController {
   private alive = true;
   private drag: Drag | null = null;
   private prefetchGen = 0; // bumped when a new background download queue starts
+  private hopToken = -1; // token of a far jump still in its crossfade (no trip is playing yet)
+  private showGen = 0; // bumped by every show(): only the latest one may flip the still layers
+  private away = false; // the tour is scrolled out of view (park / resume): no background downloads
   private blobVideo = true; // false once a blob URL failed to load: trips then play from their plain URL
   private codec: TripSet; // the encoding this device decodes best (its normal tier)
   private enc: TripSet; // the files in use: the codec's normal tier, or its lite tier on a slow connection
@@ -189,6 +192,7 @@ export class TourController {
   }
 
   async start() {
+    const token = this.token; // captured first: park() while the intro is still being chosen must cancel it too
     this.preloadStills(0);
     if (!this.o.animated) {
       await this.show(this.o.rests[0], false);
@@ -198,7 +202,6 @@ export class TourController {
     this.codec = best;
     this.lite = slowByReport(); // until a download has measured the connection, the browser's own report decides
     this.applyTier();
-    const token = this.token;
     const introSet = this.enc;
     const introUrl = introSet.intro;
     const t0 = performance.now();
@@ -317,6 +320,7 @@ export class TourController {
   step(dir: 1 | -1): boolean {
     const { chapter, moving, target } = this.s;
     if (moving) {
+      if (this.token === this.hopToken) return true; // crossfading towards a far jump: nothing to turn around yet
       const heading = sign(target - chapter);
       if (heading === 0) {
         // intro: a forward step is queued for when it lands, a back step has nowhere to go
@@ -337,6 +341,7 @@ export class TourController {
     const { chapter, moving, target } = this.s;
     const base = moving ? target : chapter;
     if (i === base) return;
+    if (moving && this.token === this.hopToken) return void this.jump(i); // the far jump is still a crossfade
     if (Math.abs(i - base) === 1 && this.o.animated) {
       if (!moving) return void this.step(sign(i - base) as 1 | -1);
       const heading = sign(target - chapter);
@@ -345,7 +350,53 @@ export class TourController {
       else this.jump(i);
       return;
     }
+    if (!moving && this.o.animated && this.hop(i, base)) return;
     this.jump(i);
+  }
+
+  /**
+   * A far jump that still ends in a trip: crossfade to the chapter next to the destination, then play the last trip.
+   * False (nothing done) when that trip is not downloaded yet: the caller crossfades.
+   */
+  private hop(i: number, from: number): boolean {
+    const dir = sign(i - from) as 1 | -1;
+    const pre = i - dir;
+    const url = dir > 0 ? this.enc.trips[pre] : this.enc.backs[pre - 1];
+    if (!url || !this.ready.has(url)) return false;
+    const my = (this.hopToken = ++this.token);
+    this.pending = 0;
+    this.set({ chapter: pre, moving: true, target: i, settling: false, loading: null });
+    void (async () => {
+      await this.show(this.o.rests[pre], true);
+      await delay(300); // the fade is done: the trip's first frame is the same picture as the still
+      if (my !== this.token || !this.alive) return;
+      await this.play(url, i, 0);
+    })();
+    return true;
+  }
+
+  /**
+   * The tour left the screen (the visitor went to the sections): rest on the last chapter, so coming back up starts
+   * from the end of the tour and can go back through it. Stops the downloads nobody waits for.
+   */
+  park(i: number) {
+    this.away = true;
+    this.prefetchGen++;
+    for (const [u, d] of this.downloads) if (d.background && !this.ready.has(u)) d.abort.abort();
+    if (this.s.chapter === i && !this.s.moving) return;
+    this.token++;
+    this.pending = 0;
+    this.drag = null;
+    this.hideVideos(false);
+    this.set({ chapter: i, moving: false, target: i, settling: false, loading: null });
+    void this.show(this.o.rests[i], false);
+  }
+
+  /** The tour is back on screen: bring in the trips around the chapter it rests on. */
+  resume() {
+    if (!this.away) return;
+    this.away = false;
+    if (!this.s.moving) this.prefetchAround(this.s.chapter);
   }
 
   // ---- dragging: the trip follows the finger ----
@@ -676,10 +727,11 @@ export class TourController {
   }
 
   private jump(i: number) {
-    this.token++;
+    const my = ++this.token;
     this.pending = 0;
     this.set({ chapter: i, moving: false, target: i, settling: false, loading: null });
-    void this.show(this.o.rests[i], true).then(() => this.hideVideos(true));
+    // Only if nothing took over meanwhile: a trip started right after the jump owns the videos.
+    void this.show(this.o.rests[i], true).then(() => my === this.token && this.hideVideos(true));
     this.prefetchAround(i);
   }
 
@@ -707,6 +759,7 @@ export class TourController {
     const cur = this.front === 0 ? a : b;
     const nxt = this.front === 0 ? b : a;
     if (cur.getAttribute("src") === url && cur.classList.contains("is-on")) return;
+    const gen = ++this.showGen;
     nxt.classList.toggle("no-fade", !fade);
     if (nxt.getAttribute("src") !== url) nxt.src = url;
     try {
@@ -714,12 +767,16 @@ export class TourController {
     } catch {
       /* broken or blocked image: show what we have */
     }
+    if (gen !== this.showGen) return; // a newer call is using the same layers and will do the swap
     nxt.style.zIndex = "2";
     cur.style.zIndex = "1";
     nxt.classList.add("is-on");
     this.front = this.front === 0 ? 1 : 0;
     // The new still fades in over the old one, which only goes away once covered.
-    if (fade) this.later(() => cur.classList.remove("is-on"), 320);
+    if (fade) {
+      // Unless a quick jump back already made it the front layer again.
+      this.later(() => cur !== (this.front === 0 ? a : b) && cur.classList.remove("is-on"), 320);
+    }
     else cur.classList.remove("is-on");
   }
 
@@ -740,6 +797,9 @@ export class TourController {
     // Arriving at another chapter starts a new queue; the old one stops after its current download.
     const queue = [this.enc.trips[k], this.enc.backs[k - 1], this.enc.backs[k], this.enc.trips[k - 1], this.enc.trips[k + 1]];
     const gen = ++this.prefetchGen;
+    // Background downloads of the previous queue that this one does not want would only slow down the trips that
+    // matter now (quick jumps used to pile them up). A trip somebody is waiting for is not background and stays.
+    for (const [u, d] of this.downloads) if (d.background && !this.ready.has(u) && !queue.includes(u)) d.abort.abort();
     const next = (): void => {
       if (!this.alive || gen !== this.prefetchGen || !queue.length) return;
       const running = this.prefetch(queue.shift());
@@ -750,10 +810,10 @@ export class TourController {
   }
 
   /** Background download; past either end of the tour there is simply nothing to fetch. Skipped while the visitor
-   *  reads the sections below (the tour is scrolled away), so their images are not stuck behind unseen clips. */
+   *  reads the sections below (the tour is parked, see park), so their images are not stuck behind unseen clips. */
   private prefetch(url: string | undefined): Promise<string> | undefined {
     // Without blob video the element loads each trip itself: a background download would only fetch it twice.
-    if (!url || !this.blobVideo || window.scrollY > window.innerHeight / 2) return;
+    if (!url || !this.blobVideo || this.away) return;
     const running = this.fetch(url);
     running.catch(() => {});
     return running;
